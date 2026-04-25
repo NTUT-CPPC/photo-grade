@@ -1,86 +1,16 @@
-export const SCORE_MIN = 0;
-export const SCORE_MAX = 10;
-export const SCORE_STEP = 0.5;
+import type { JudgingMode } from "./types.js";
 
-export const SCORE_CATEGORIES = [
-  {
-    key: "impact",
-    label: "Impact",
-    description: "Immediate visual impression and emotional pull.",
-    weight: 0.35
-  },
-  {
-    key: "technical",
-    label: "Technical",
-    description: "Focus, exposure, color, processing, and presentation quality.",
-    weight: 0.25
-  },
-  {
-    key: "composition",
-    label: "Composition",
-    description: "Framing, balance, timing, and visual organization.",
-    weight: 0.25
-  },
-  {
-    key: "story",
-    label: "Story",
-    description: "Subject clarity, originality, and narrative strength.",
-    weight: 0.15
-  }
+export const JUDGES = [
+  { key: "judge1", suffix: "一", label: "何老師" },
+  { key: "judge2", suffix: "二", label: "鄧老師" },
+  { key: "judge3", suffix: "三", label: "SHA老師" }
 ] as const;
 
-export type ScoreCategory = (typeof SCORE_CATEGORIES)[number];
-export type ScoreCategoryKey = ScoreCategory["key"];
-
-export type ScoreBreakdown = Record<ScoreCategoryKey, number>;
-
-export const SCORE_CATEGORY_KEYS = SCORE_CATEGORIES.map((category) => category.key);
-
-export function isScoreCategoryKey(value: string): value is ScoreCategoryKey {
-  return SCORE_CATEGORY_KEYS.includes(value as ScoreCategoryKey);
-}
-
-export function roundScore(value: number): number {
-  return Math.round(value / SCORE_STEP) * SCORE_STEP;
-}
-
-export function normalizeScore(value: number): number {
-  if (!Number.isFinite(value)) {
-    throw new Error("Score must be a finite number.");
-  }
-
-  const rounded = roundScore(value);
-  return Math.min(SCORE_MAX, Math.max(SCORE_MIN, rounded));
-}
-
-export function calculateWeightedScore(scores: ScoreBreakdown): number {
-  const total = SCORE_CATEGORIES.reduce((sum, category) => {
-    return sum + normalizeScore(scores[category.key]) * category.weight;
-  }, 0);
-
-  return Number(total.toFixed(2));
-}
-
-export function emptyScoreBreakdown(value = SCORE_MIN): ScoreBreakdown {
-  return SCORE_CATEGORY_KEYS.reduce((scores, key) => {
-    scores[key] = normalizeScore(value);
-    return scores;
-  }, {} as ScoreBreakdown);
-}
-
-export function assertScoreBreakdown(value: Partial<Record<string, number>>): ScoreBreakdown {
-  const scores = emptyScoreBreakdown();
-
-  for (const key of SCORE_CATEGORY_KEYS) {
-    const raw = value[key];
-    if (typeof raw !== "number") {
-      throw new Error(`Missing numeric score for ${key}.`);
-    }
-    scores[key] = normalizeScore(raw);
-  }
-
-  return scores;
-}
+export const FINAL_CRITERIA = [
+  { key: "aesthetic", label: "美感", fieldPrefix: "決評美感" },
+  { key: "story", label: "故事", fieldPrefix: "決評故事" },
+  { key: "creativity", label: "創意", fieldPrefix: "決評創意" }
+] as const;
 
 export type ScoreRound = "initial" | "secondary" | "final";
 
@@ -88,24 +18,24 @@ export const SCORE_ROUNDS = ["initial", "secondary", "final"] as const;
 
 export const ROUND_FIELDS: Record<ScoreRound, readonly string[]> = {
   initial: ["初評"],
-  secondary: ["複評一", "複評二", "複評三"],
-  final: ["決評總分"]
-};
-
-export const ROUND_SCORE_LIMITS: Record<ScoreRound, { min: number; max: number; step: number }> = {
-  initial: { min: 0, max: 3, step: 1 },
-  secondary: { min: 0, max: 100, step: 1 },
-  final: { min: 0, max: 100, step: 1 }
+  secondary: JUDGES.map((judge) => `複評${judge.suffix}`),
+  final: FINAL_CRITERIA.flatMap((criterion) => JUDGES.map((judge) => `${criterion.fieldPrefix}${judge.suffix}`))
 };
 
 export function isScoreRound(value: string): value is ScoreRound {
   return SCORE_ROUNDS.includes(value as ScoreRound);
 }
 
+export function modeLabel(mode: JudgingMode): string {
+  if (mode === "initial") return "初評";
+  if (mode === "secondary") return "複評";
+  return "決評";
+}
+
 export function roundForScoreField(field: string): ScoreRound | null {
-  if ((ROUND_FIELDS.initial as readonly string[]).includes(field)) return "initial";
-  if ((ROUND_FIELDS.secondary as readonly string[]).includes(field)) return "secondary";
-  if ((ROUND_FIELDS.final as readonly string[]).includes(field)) return "final";
+  if (field === "初評") return "initial";
+  if (/^複評[一二三]$/.test(field)) return "secondary";
+  if (/^決評(美感|故事|創意)[一二三]$/.test(field)) return "final";
   return null;
 }
 
@@ -113,19 +43,36 @@ export function defaultFieldForRound(round: ScoreRound): string {
   return ROUND_FIELDS[round][0];
 }
 
-export function validateScore(field: string, value: number, round = roundForScoreField(field)): boolean {
-  if (!round || !Number.isFinite(value)) return false;
-  if (!(ROUND_FIELDS[round] as readonly string[]).includes(field)) return false;
-  const limits = ROUND_SCORE_LIMITS[round];
-  if (value < limits.min || value > limits.max) return false;
-  return Math.abs(value / limits.step - Math.round(value / limits.step)) < Number.EPSILON;
+export function scoreRangeForField(field: string): { min: number; max: number } | null {
+  if (field === "初評") return { min: 0, max: 3 };
+  if (/^複評[一二三]$/.test(field)) return { min: 3, max: 5 };
+  if (/^決評(美感|故事|創意)[一二三]$/.test(field)) return { min: 3, max: 5 };
+  return null;
 }
 
-export function scoreLabel(field: string): { label: string; judgeLabel: string } {
-  const round = roundForScoreField(field);
-  const judgeLabel = field.replace(/^複評/, "評審");
-  return {
-    label: round === "initial" ? "初評" : round === "secondary" ? "複評" : round === "final" ? "決評" : field,
-    judgeLabel
-  };
+export function validateScore(field: string, value: number, round = roundForScoreField(field)): boolean {
+  const range = scoreRangeForField(field);
+  return !!range && !!round && Number.isInteger(value) && value >= range.min && value <= range.max;
+}
+
+export function scoreLabel(field: string): { label: string; judgeLabel: string; mode: JudgingMode } {
+  if (field === "初評") return { label: "初評", judgeLabel: JUDGES[0].label, mode: "initial" };
+  const secondary = field.match(/^複評([一二三])$/);
+  if (secondary) {
+    const judge = JUDGES.find((j) => j.suffix === secondary[1]);
+    return { label: "複評", judgeLabel: judge?.label ?? field, mode: "secondary" };
+  }
+  const final = field.match(/^決評(美感|故事|創意)([一二三])$/);
+  if (final) {
+    const judge = JUDGES.find((j) => j.suffix === final[2]);
+    return { label: final[1], judgeLabel: judge?.label ?? field, mode: "final" };
+  }
+  return { label: field, judgeLabel: field, mode: "initial" };
+}
+
+export function fieldsForMode(mode: JudgingMode, criterionKey?: string): string[] {
+  if (mode === "initial") return ["初評"];
+  if (mode === "secondary") return JUDGES.map((j) => `複評${j.suffix}`);
+  const criterion = FINAL_CRITERIA.find((c) => c.key === criterionKey) ?? FINAL_CRITERIA[0];
+  return JUDGES.map((j) => `${criterion.fieldPrefix}${j.suffix}`);
 }

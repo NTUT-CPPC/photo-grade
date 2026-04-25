@@ -54,7 +54,8 @@ async function toSummary(work: Awaited<ReturnType<typeof prisma.work.findMany>>[
 export async function metadataForWork(workId: string): Promise<unknown> {
   const asset = await prisma.asset.findUnique({ where: { workId_kind: { workId, kind: "metadata" } } });
   if (!asset) return null;
-  const content = await fs.readFile(asset.path.startsWith(dataDirs.root) ? asset.path : "", "utf8");
+  if (!asset.path.startsWith(dataDirs.root)) throw new Error("Metadata path is outside DATA_DIR.");
+  const content = await fs.readFile(asset.path, "utf8");
   return JSON.parse(content);
 }
 

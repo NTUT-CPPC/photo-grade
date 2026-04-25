@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { JudgingMode } from "@photo-grade/shared";
+import { basicAuth } from "../auth.js";
 import { getPresentationState, setPresentationState } from "../services/presentation-service.js";
 import { emitStateChanged } from "../realtime.js";
 
@@ -13,7 +14,7 @@ stateRoutes.get("/api/host/state", async (_req, res, next) => {
   }
 });
 
-stateRoutes.post("/api/host/state", async (req, res, next) => {
+stateRoutes.post("/api/host/state", basicAuth("host", "admin"), async (req, res, next) => {
   try {
     const state = await setPresentationState(req.body);
     emitStateChanged(state);
@@ -32,7 +33,7 @@ stateRoutes.get(["/api/sync/idx", "/get_idx"], async (_req, res, next) => {
   }
 });
 
-stateRoutes.post(["/api/sync/idx", "/set_idx"], async (req, res, next) => {
+stateRoutes.post(["/api/sync/idx", "/set_idx"], basicAuth("host", "admin"), async (req, res, next) => {
   try {
     const state = await setPresentationState({ idx: req.body?.idx ?? req.body?.index, base: req.body?.base });
     emitStateChanged(state);
@@ -51,7 +52,7 @@ stateRoutes.get(["/api/sync/mode", "/get_mode"], async (_req, res, next) => {
   }
 });
 
-stateRoutes.post(["/api/sync/mode", "/set_mode"], async (req, res, next) => {
+stateRoutes.post(["/api/sync/mode", "/set_mode"], basicAuth("host", "admin"), async (req, res, next) => {
   try {
     const state = await setPresentationState({ mode: req.body?.mode as JudgingMode });
     emitStateChanged(state);

@@ -1,12 +1,11 @@
-import { NavLink } from "react-router-dom";
-
 export function TopNav() {
+  const path = window.location.pathname;
   return (
     <nav className="top-nav" aria-label="Application routes">
-      <NavLink to="/admin">Admin</NavLink>
-      <NavLink to="/host">Host</NavLink>
-      <NavLink to="/score">Score</NavLink>
-      <NavLink to="/view">View</NavLink>
+      <a className={path.startsWith("/admin") ? "active" : ""} href="/admin">Admin</a>
+      <a className={path.startsWith("/host") ? "active" : ""} href="/host">Host</a>
+      <a className={path.startsWith("/score") ? "active" : ""} href="/score">Score</a>
+      <a className={path === "/" || path.startsWith("/view") ? "active" : ""} href="/view">View</a>
     </nav>
   );
 }

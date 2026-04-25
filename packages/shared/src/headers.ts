@@ -1,6 +1,10 @@
 import type { ImportDryRun, ImportIssue, NormalizedWorkInput } from "./types.js";
 
 export const HEADER_ALIASES: Record<string, string[]> = {
+  code: ["作品編號", "作品编号", "編號", "编号", "ID", "id", "asset id", "asset_id", "entry id", "entry_id", "submission id", "submission_id"],
+  title: ["作品名稱", "作品名称", "Title", "title", "name"],
+  sourceUrl: ["作品檔案", "作品档案", "作品檔案網址", "作品档案网址", "Source URL", "source_url", "source url", "file url", "file_url", "image url", "image_url", "photo url", "photo_url", "url"],
+  description: ["創作理念", "创作理念", "Description", "description", "caption", "statement", "concept"],
   timestamp: ["時間", "Timestamp"],
   email: ["電子郵件地址", "電子郵件", "Email", "email"],
   school: ["學校"],
@@ -15,12 +19,14 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   work2Description: ["作品2_創作理念", "作品2 創作理念", "作品2創作理念"]
 };
 
-const REQUIRED_KEYS = ["work1Title", "work1File", "work1Description"];
+const DIRECT_REQUIRED_KEYS = ["code", "title", "sourceUrl"];
+const LEGACY_REQUIRED_KEYS = ["work1Title", "work1File"];
 
 function valueFor(row: Record<string, unknown>, key: string): string {
   const aliases = HEADER_ALIASES[key] ?? [key];
-  for (const alias of aliases) {
-    const raw = row[alias];
+  const normalizedRow = normalizedRecord(row);
+  for (const alias of [key, ...aliases]) {
+    const raw = normalizedRow.get(normalizeHeader(alias));
     if (raw !== undefined && raw !== null && String(raw).trim() !== "") return String(raw).trim();
   }
   return "";
@@ -28,11 +34,16 @@ function valueFor(row: Record<string, unknown>, key: string): string {
 
 export function validateHeaders(headers: string[]): ImportIssue[] {
   const issues: ImportIssue[] = [];
-  const headerSet = new Set(headers.map((h) => h.trim()));
-  for (const key of REQUIRED_KEYS) {
-    if (!HEADER_ALIASES[key].some((alias) => headerSet.has(alias))) {
-      issues.push({ row: 1, field: key, message: `缺少必要欄位：${HEADER_ALIASES[key].join(" / ")}` });
-    }
+  const canonical = canonicalHeaders(headers);
+  const hasDirect = DIRECT_REQUIRED_KEYS.every((key) => canonical.has(key));
+  const hasLegacy = LEGACY_REQUIRED_KEYS.every((key) => canonical.has(key));
+
+  if (!hasDirect && !hasLegacy) {
+    issues.push({
+      row: 1,
+      field: "headers",
+      message: `缺少必要欄位：需提供 ${DIRECT_REQUIRED_KEYS.map(labelForKey).join(" / ")}，或 ${LEGACY_REQUIRED_KEYS.map(labelForKey).join(" / ")}`
+    });
   }
   return issues;
 }
@@ -44,6 +55,7 @@ export function normalizeRows(rows: Record<string, unknown>[]): ImportDryRun {
 
   rows.forEach((row, idx) => {
     const rowNumber = idx + 2;
+    const directSourceUrl = valueFor(row, "sourceUrl");
     const base = {
       author: valueFor(row, "author"),
       school: valueFor(row, "school"),
@@ -52,21 +64,96 @@ export function normalizeRows(rows: Record<string, unknown>[]): ImportDryRun {
       email: valueFor(row, "email")
     };
 
+    if (directSourceUrl) {
+      const code = safeCode(valueFor(row, "code") || String(idx + 1));
+      const title = valueFor(row, "title");
+      const description = valueFor(row, "description");
+      validateWork(rowNumber, code, title, directSourceUrl, seen, issues);
+      if (title && directSourceUrl) works.push({ code, title, description, sourceUrl: directSourceUrl, ...base });
+      return;
+    }
+
     for (const [suffix, postfix] of [["1", "a"], ["2", "b"]] as const) {
       const title = valueFor(row, `work${suffix}Title`);
       const sourceUrl = valueFor(row, `work${suffix}File`);
       const description = valueFor(row, `work${suffix}Description`);
       if (!sourceUrl && suffix === "2") continue;
-      if (!title || !sourceUrl) {
-        issues.push({ row: rowNumber, field: `作品${suffix}`, message: "作品名稱與檔案連結皆為必要" });
-        continue;
-      }
       const code = `${idx + 1}-${postfix}`;
-      if (seen.has(code)) issues.push({ row: rowNumber, field: "作品編號", message: `重複作品編號 ${code}` });
-      seen.add(code);
+      validateWork(rowNumber, code, title, sourceUrl, seen, issues);
+      if (!title || !sourceUrl) continue;
       works.push({ code, title, description, sourceUrl, ...base });
     }
   });
 
   return { totalRows: rows.length, works, issues };
+}
+
+export function normalizeHeader(header: string): string {
+  return header
+    .trim()
+    .replace(/^\uFEFF/, "")
+    .replace(/[_\-.]+/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function canonicalHeaders(headers: string[]): Set<string> {
+  const canonical = new Set<string>();
+  const aliasMap = aliasLookup();
+  headers.forEach((header) => {
+    const key = aliasMap.get(normalizeHeader(header));
+    if (key) canonical.add(key);
+  });
+  return canonical;
+}
+
+function aliasLookup(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const [key, aliases] of Object.entries(HEADER_ALIASES)) {
+    map.set(normalizeHeader(key), key);
+    aliases.forEach((alias) => map.set(normalizeHeader(alias), key));
+  }
+  return map;
+}
+
+function normalizedRecord(row: Record<string, unknown>): Map<string, unknown> {
+  const normalized = new Map<string, unknown>();
+  for (const [key, value] of Object.entries(row)) {
+    normalized.set(normalizeHeader(key), value);
+  }
+  return normalized;
+}
+
+function safeCode(input: string): string {
+  return input
+    .trim()
+    .replace(/[^0-9A-Za-z._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120);
+}
+
+function validateWork(row: number, code: string, title: string, sourceUrl: string, seen: Set<string>, issues: ImportIssue[]): void {
+  if (!title || !sourceUrl) {
+    issues.push({ row, field: "作品", message: "作品名稱與檔案連結皆為必要" });
+    return;
+  }
+  if (!code) {
+    issues.push({ row, field: "作品編號", message: "作品編號不可為空" });
+  } else if (seen.has(code)) {
+    issues.push({ row, field: "作品編號", message: `重複作品編號 ${code}` });
+  }
+  seen.add(code);
+
+  try {
+    const parsed = new URL(sourceUrl);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      issues.push({ row, field: "sourceUrl", message: "檔案連結必須使用 http 或 https" });
+    }
+  } catch {
+    issues.push({ row, field: "sourceUrl", message: `檔案連結格式錯誤：${sourceUrl}` });
+  }
+}
+
+function labelForKey(key: string): string {
+  return HEADER_ALIASES[key]?.[0] ?? key;
 }

@@ -21,14 +21,12 @@ services:
   app:
     build: .
     command: sh -c "npm run db:push && npm run start"
-    env_file:
-      - .env
     environment:
       <<: *app-env
     ports:
       - "8080:8080"
     volumes:
-      - photo-data:/data
+      - ./data:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,12 +36,10 @@ services:
   worker:
     build: .
     command: npm run worker
-    env_file:
-      - .env
     environment:
       <<: *app-env
     volumes:
-      - photo-data:/data
+      - ./data:/data
     depends_on:
       app:
         condition: service_started
@@ -72,4 +68,3 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  photo-data:

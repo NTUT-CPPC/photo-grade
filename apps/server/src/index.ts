@@ -1,21 +1,43 @@
 import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
 import cors from "cors";
 import express from "express";
+import multer from "multer";
 import { env } from "./env.js";
+import { basicAuth } from "./auth.js";
+import { enqueueImport } from "./queue.js";
 import { attachRealtime } from "./realtime.js";
 import { scoreRoutes } from "./routes/score-routes.js";
 import { stateRoutes } from "./routes/state-routes.js";
+import { prisma } from "./prisma.js";
+import { createImportBatch } from "./services/import-service.js";
 import { listWorks, metadataForWork } from "./services/work-service.js";
 import { processSheetSync } from "./services/sheet-service.js";
-import { ensureDataDirs } from "./storage.js";
+import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
 
 await ensureDataDirs();
 
 const app = express();
+const upload = multer({
+  dest: dataDirs.imports,
+  limits: { fileSize: env.MAX_IMPORT_FILE_MB * 1024 * 1024 }
+});
+
 app.use(cors());
 app.use(express.json({ limit: "5mb" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
+
+app.use("/media/:kind/:file", (req, res) => {
+  const kind = req.params.kind;
+  if (!["originals", "previews", "thumbnails"].includes(kind)) return res.status(404).send("Not found");
+  const dir = dataDirs[kind as "originals" | "previews" | "thumbnails"];
+  const filePath = assertInsideDataDir(path.join(dir, req.params.file));
+  if (!fs.existsSync(filePath)) return res.status(404).send("Not found");
+  return res.sendFile(filePath);
+});
 
 app.get("/api/works", async (req, res, next) => {
   try {
@@ -51,10 +73,65 @@ app.get("/api/works/:workId/metadata", async (req, res, next) => {
   }
 });
 
+app.post(["/api/admin/import/dry-run", "/api/admin/imports/dry-run"], basicAuth("admin"), upload.any(), async (req, res, next) => {
+  try {
+    const files = (req.files ?? []) as Express.Multer.File[];
+    const file = files[0];
+    if (!file) {
+      res.status(400).json({ error: "Missing CSV/XLSX file." });
+      return;
+    }
+    const result = await createImportBatch(file.originalname, file.path);
+    res.json(toDryRunResponse(result.id, result.dryRun));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post(["/api/admin/import/confirm", "/api/admin/imports/:id/confirm"], basicAuth("admin"), async (req, res, next) => {
+  try {
+    const importId = firstString(req.params.id) ?? firstString(req.body?.importId) ?? firstString(req.body?.id);
+    if (!importId) throw new Error("importId is required.");
+    await prisma.importBatch.update({ where: { id: importId }, data: { status: "QUEUED", error: null } });
+    await enqueueImport(importId);
+    res.status(202).json({ importId, status: "running", phase: "queued", done: 0, total: 1, message: "Import queued." });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get(["/api/admin/import/progress/:id", "/api/admin/imports/:id"], basicAuth("admin"), async (req, res, next) => {
+  try {
+    const id = firstString(req.params.id);
+    if (!id) throw new Error("importId is required.");
+    const batch = await prisma.importBatch.findUniqueOrThrow({ where: { id } });
+    const dryRun = batch.dryRunJson as { works?: unknown[] };
+    const total = dryRun.works?.length ?? 0;
+    res.json({
+      importId: batch.id,
+      status: batch.status === "COMPLETED" ? "complete" : batch.status === "FAILED" ? "error" : "running",
+      phase: batch.status,
+      done: batch.status === "COMPLETED" ? total : 0,
+      total,
+      message: batch.error ?? batch.status
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/imports", basicAuth("admin"), async (_req, res, next) => {
+  try {
+    res.json(await prisma.importBatch.findMany({ orderBy: { createdAt: "desc" }, take: 20 }));
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.use(scoreRoutes);
 app.use(stateRoutes);
 
-app.post("/api/sheet-sync/drain", async (_req, res, next) => {
+app.post("/api/sheet-sync/drain", basicAuth("admin"), async (_req, res, next) => {
   try {
     await processSheetSync();
     res.status(202).json({ ok: true });
@@ -62,6 +139,12 @@ app.post("/api/sheet-sync/drain", async (_req, res, next) => {
     next(error);
   }
 });
+
+app.use("/host", basicAuth("host", "admin"), staticWeb());
+app.use("/score", basicAuth("score", "admin"), staticWeb());
+app.use("/admin", basicAuth("admin"), staticWeb());
+app.use("/view", staticWeb());
+app.use("/", staticWeb());
 
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const message = error instanceof Error ? error.message : String(error);
@@ -74,3 +157,32 @@ attachRealtime(server);
 server.listen(env.PORT, () => {
   console.log(`photo-grade server listening on ${env.PORT}`);
 });
+
+function staticWeb() {
+  const dist = path.resolve(process.cwd(), "apps/web/dist");
+  const fallback = path.join(dist, "index.html");
+  return [
+    express.static(dist),
+    (_req: express.Request, res: express.Response) => {
+      if (fs.existsSync(fallback)) return res.sendFile(fallback);
+      return res.status(200).send("Web build is not available. Run npm run build -w @photo-grade/web.");
+    }
+  ];
+}
+
+function toDryRunResponse(id: string, dryRun: { totalRows: number; works: Array<{ code: string; title: string }>; issues: Array<{ row: number; field: string; message: string }> }) {
+  return {
+    id,
+    importId: id,
+    total: dryRun.totalRows,
+    valid: dryRun.works.length,
+    warnings: [] as string[],
+    errors: dryRun.issues.map((issue) => `Row ${issue.row} ${issue.field}: ${issue.message}`),
+    items: dryRun.works.map((work) => ({ base: work.code, name: work.title, status: "ready" }))
+  };
+}
+
+function firstString(value: unknown): string | undefined {
+  if (Array.isArray(value)) return firstString(value[0]);
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}

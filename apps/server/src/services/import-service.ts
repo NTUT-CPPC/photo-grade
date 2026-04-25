@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parse as parseCsv } from "csv-parse/sync";
-import * as XLSX from "xlsx";
+import readXlsxFile from "read-excel-file/node";
+import type { Prisma } from "@prisma/client";
 import { normalizeRows, validateHeaders, type ImportDryRun } from "@photo-grade/shared";
 import { prisma } from "../prisma.js";
 import { assertInsideDataDir, dataDirs, safeFileName } from "../storage.js";
@@ -25,7 +26,7 @@ export async function createImportBatch(originalName: string, tempPath: string):
       fileName: originalName,
       filePath: targetPath,
       status: "DRY_RUN",
-      dryRunJson: dryRun
+      dryRunJson: dryRun as unknown as Prisma.InputJsonValue
     }
   });
   return { id: batch.id, dryRun };
@@ -78,13 +79,36 @@ export async function processImportBatch(batchId: string, onProgress?: (message:
 
 async function readRows(filePath: string): Promise<Record<string, unknown>[]> {
   const ext = path.extname(filePath).toLowerCase();
-  const buf = await fs.readFile(assertInsideDataDir(filePath));
-  if (ext === ".xlsx" || ext === ".xls") {
-    const workbook = XLSX.read(buf, { type: "buffer", cellDates: true });
-    const firstSheet = workbook.SheetNames[0];
-    if (!firstSheet) return [];
-    return XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[firstSheet], { defval: "" });
+  const safePath = assertInsideDataDir(filePath);
+  if (ext === ".xlsx") {
+    const rows = await readXlsxFile(safePath, { sheet: 1 });
+    return tableToRecords(rows);
   }
+  if (ext !== ".csv") {
+    throw new Error("Import file must be CSV or XLSX.");
+  }
+  const buf = await fs.readFile(safePath);
   const content = buf.toString("utf8");
   return parseCsv(content, { columns: true, skip_empty_lines: true, bom: true, trim: true }) as Record<string, unknown>[];
+}
+
+function tableToRecords(rows: unknown[][]): Record<string, unknown>[] {
+  const [headerRow, ...bodyRows] = rows;
+  if (!headerRow) return [];
+  const headers = headerRow.map(cellToString);
+  return bodyRows
+    .filter((row) => row.some((cell) => cellToString(cell) !== ""))
+    .map((row) => {
+      const record: Record<string, unknown> = {};
+      headers.forEach((header, index) => {
+        if (header) record[header] = cellToString(row[index]);
+      });
+      return record;
+    });
+}
+
+function cellToString(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString();
+  return String(value).trim();
 }

@@ -13,11 +13,9 @@ export type PresentationPatch = {
 };
 
 export async function getPresentationState(): Promise<PresentationStatePayload> {
-  const state = await prisma.presentationState.upsert({
-    where: { id: 1 },
-    update: {},
-    create: { id: 1, mode: "initial", idx: 0 }
-  });
+  const state =
+    (await prisma.presentationState.findUnique({ where: { id: 1 } })) ??
+    (await prisma.presentationState.create({ data: { id: 1, mode: "initial", idx: 0 } }));
   const work = state.workId ? await prisma.work.findUnique({ where: { id: state.workId } }) : null;
   return {
     mode: validateMode(state.mode),

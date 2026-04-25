@@ -1,0 +1,22 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+# Local mutable runtime state. Containers should mount this as /data.
+data/
+
+# Prisma/local database artifacts
+*.db
+*.db-journal
+*.sqlite
+*.sqlite-journal
+
+# Logs and OS noise
+*.log
+.DS_Store
+Thumbs.db

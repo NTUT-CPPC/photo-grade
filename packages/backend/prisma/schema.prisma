@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ContestStatus {
+  DRAFT
+  OPEN
+  JUDGING
+  FINAL
+  ARCHIVED
+}
+
+enum EntryStatus {
+  IMPORTED
+  READY
+  HELD
+  DISQUALIFIED
+}
+
+enum AssetKind {
+  ORIGINAL
+  DERIVATIVE
+}
+
+enum ScoreStatus {
+  DRAFT
+  SUBMITTED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum AuditActorRole {
+  HOST
+  SCORE
+  ADMIN
+  SYSTEM
+}
+
+model Contest {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  name        String
+  status      ContestStatus @default(DRAFT)
+  categories  Category[]
+  entries     Entry[]
+  judges      Judge[]
+  imports     CsvImport[]
+  exports     CsvExport[]
+  auditLogs   AuditLog[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  contestId   String
+  contest     Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  slug        String
+  name        String
+  sortOrder   Int      @default(0)
+  entries     Entry[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([contestId, slug])
+  @@index([contestId, sortOrder])
+}
+
+model Entry {
+  id                 String       @id @default(cuid())
+  contestId          String
+  contest            Contest      @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  categoryId         String?
+  category           Category?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  publicCode         String
+  title              String
+  photographerName   String
+  photographerEmail  String?
+  division           String?
+  notes              String?
+  status             EntryStatus  @default(IMPORTED)
+  submittedAt        DateTime?
+  assets             PhotoAsset[]
+  scores             Score[]
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@unique([contestId, publicCode])
+  @@index([contestId, status])
+  @@index([categoryId])
+}
+
+model PhotoAsset {
+  id            String    @id @default(cuid())
+  entryId       String
+  entry         Entry     @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  kind          AssetKind
+  storageKey    String
+  originalName  String
+  mimeType      String
+  byteSize      Int
+  checksumSha256 String?
+  width         Int?
+  height        Int?
+  createdAt     DateTime  @default(now())
+
+  @@unique([entryId, kind, storageKey])
+  @@index([storageKey])
+}
+
+model Judge {
+  id           String   @id @default(cuid())
+  contestId    String
+  contest      Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  displayName  String
+  code         String?
+  scores       Score[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([contestId, displayName])
+  @@unique([contestId, code])
+}
+
+model Score {
+  id           String      @id @default(cuid())
+  entryId      String
+  entry        Entry       @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  judgeId      String
+  judge        Judge       @relation(fields: [judgeId], references: [id], onDelete: Cascade)
+  impact       Decimal     @db.Decimal(4, 2)
+  technical    Decimal     @db.Decimal(4, 2)
+  composition  Decimal     @db.Decimal(4, 2)
+  story        Decimal     @db.Decimal(4, 2)
+  total        Decimal     @db.Decimal(5, 2)
+  notes        String?
+  status       ScoreStatus @default(DRAFT)
+  submittedAt  DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([entryId, judgeId])
+  @@index([judgeId, status])
+}
+
+model CsvImport {
+  id             String    @id @default(cuid())
+  contestId      String
+  contest        Contest   @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  sourceFilename String
+  storageKey     String
+  rowCount       Int       @default(0)
+  status         JobStatus @default(PENDING)
+  errorSummary   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([contestId, createdAt])
+}
+
+model CsvExport {
+  id             String    @id @default(cuid())
+  contestId      String
+  contest        Contest   @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  filename       String
+  storageKey     String
+  status         JobStatus @default(PENDING)
+  errorSummary   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([contestId, createdAt])
+}
+
+model AuditLog {
+  id          String         @id @default(cuid())
+  contestId   String?
+  contest     Contest?       @relation(fields: [contestId], references: [id], onDelete: SetNull)
+  actorRole   AuditActorRole
+  actorName   String?
+  action      String
+  targetType  String?
+  targetId    String?
+  metadata    Json?
+  createdAt   DateTime       @default(now())
+
+  @@index([contestId, createdAt])
+  @@index([action, createdAt])
+}

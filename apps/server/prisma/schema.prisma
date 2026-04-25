@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Work {
+  id             String   @id @default(cuid())
+  code           String   @unique
+  title          String
+  description    String   @default("")
+  author         String?
+  school         String?
+  department     String?
+  studentId      String?
+  email          String?
+  sourceUrl      String?
+  initialPassed  Boolean  @default(false)
+  secondaryTotal Float    @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  assets         Asset[]
+  scores         Score[]
+}
+
+model Asset {
+  id        String   @id @default(cuid())
+  workId    String
+  kind      String
+  path      String
+  mime      String?
+  size      Int      @default(0)
+  createdAt DateTime @default(now())
+  work      Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  @@unique([workId, kind])
+}
+
+model Score {
+  id          String   @id @default(cuid())
+  workId      String
+  round       String   @default("initial")
+  judgeId     String   @default("default")
+  field       String
+  value       Int
+  sheetStatus String   @default("PENDING")
+  sheetError  String?
+  syncedAt    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  work        Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  outboxItems SheetSyncOutbox[]
+
+  @@unique([workId, round, judgeId, field])
+  @@index([sheetStatus])
+}
+
+model PresentationState {
+  id        Int      @id @default(1)
+  mode      String   @default("initial")
+  workId    String?
+  idx       Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
+model SheetSyncOutbox {
+  id            String    @id @default(cuid())
+  scoreId       String
+  status        String    @default("PENDING")
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  error         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  syncedAt      DateTime?
+  score         Score     @relation(fields: [scoreId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([scoreId])
+}
+
+model ImportBatch {
+  id         String   @id @default(cuid())
+  fileName   String
+  filePath   String
+  status     String   @default("DRY_RUN")
+  dryRunJson Json
+  error      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}

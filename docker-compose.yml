@@ -1,0 +1,75 @@
+x-app-env: &app-env
+  NODE_ENV: production
+  PORT: 8080
+  DATA_DIR: /data
+  DATABASE_URL: postgresql://photo_grade:${POSTGRES_PASSWORD:-photo_grade}@postgres:5432/photo_grade?schema=public
+  REDIS_URL: redis://redis:6379
+  HOST_USERNAME: ${HOST_USERNAME:?set HOST_USERNAME}
+  HOST_PASSWORD: ${HOST_PASSWORD:?set HOST_PASSWORD}
+  SCORE_USERNAME: ${SCORE_USERNAME:?set SCORE_USERNAME}
+  SCORE_PASSWORD: ${SCORE_PASSWORD:?set SCORE_PASSWORD}
+  ADMIN_USERNAME: ${ADMIN_USERNAME:?set ADMIN_USERNAME}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+  HOST_AUTH_USERNAME: ${HOST_USERNAME:?set HOST_USERNAME}
+  HOST_AUTH_PASSWORD: ${HOST_PASSWORD:?set HOST_PASSWORD}
+  SCORE_AUTH_USERNAME: ${SCORE_USERNAME:?set SCORE_USERNAME}
+  SCORE_AUTH_PASSWORD: ${SCORE_PASSWORD:?set SCORE_PASSWORD}
+  ADMIN_AUTH_USERNAME: ${ADMIN_USERNAME:?set ADMIN_USERNAME}
+  ADMIN_AUTH_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+
+services:
+  app:
+    build: .
+    command: sh -c "npm run db:push && npm run start"
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+    ports:
+      - "8080:8080"
+    volumes:
+      - photo-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build: .
+    command: npm run worker
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+    volumes:
+      - photo-data:/data
+    depends_on:
+      app:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: photo_grade
+      POSTGRES_USER: photo_grade
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-photo_grade}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U photo_grade -d photo_grade"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    volumes:
+      - redis-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:
+  photo-data:

@@ -1,9 +1,9 @@
 import type { JudgingMode } from "./types.js";
 
 export const JUDGES = [
-  { key: "judge1", suffix: "一", label: "何老師" },
-  { key: "judge2", suffix: "二", label: "鄧老師" },
-  { key: "judge3", suffix: "三", label: "SHA老師" }
+  { key: "judge1", suffix: "1", label: "何老師" },
+  { key: "judge2", suffix: "2", label: "鄧老師" },
+  { key: "judge3", suffix: "3", label: "SHA老師" }
 ] as const;
 
 export const FINAL_CRITERIA = [
@@ -34,8 +34,8 @@ export function modeLabel(mode: JudgingMode): string {
 
 export function roundForScoreField(field: string): ScoreRound | null {
   if (field === "初評") return "initial";
-  if (/^複評(一|二|三|[1-9]\d*)$/.test(field)) return "secondary";
-  if (/^決評(美感|故事|創意)(一|二|三|[1-9]\d*)$/.test(field)) return "final";
+  if (/^複評([1-9]\d*)$/.test(field)) return "secondary";
+  if (/^決評(美感|故事|創意)([1-9]\d*)$/.test(field)) return "final";
   return null;
 }
 
@@ -45,8 +45,8 @@ export function defaultFieldForRound(round: ScoreRound): string {
 
 export function scoreRangeForField(field: string): { min: number; max: number } | null {
   if (field === "初評") return { min: 0, max: 3 };
-  if (/^複評(一|二|三|[1-9]\d*)$/.test(field)) return { min: 3, max: 5 };
-  if (/^決評(美感|故事|創意)(一|二|三|[1-9]\d*)$/.test(field)) return { min: 3, max: 5 };
+  if (/^複評([1-9]\d*)$/.test(field)) return { min: 3, max: 5 };
+  if (/^決評(美感|故事|創意)([1-9]\d*)$/.test(field)) return { min: 3, max: 5 };
   return null;
 }
 
@@ -57,12 +57,12 @@ export function validateScore(field: string, value: number, round = roundForScor
 
 export function scoreLabel(field: string): { label: string; judgeLabel: string; mode: JudgingMode } {
   if (field === "初評") return { label: "初評", judgeLabel: JUDGES[0].label, mode: "initial" };
-  const secondary = field.match(/^複評(一|二|三|[1-9]\d*)$/);
+  const secondary = field.match(/^複評([1-9]\d*)$/);
   if (secondary) {
     const judge = JUDGES[judgeIndexFromSuffix(secondary[1])];
     return { label: "複評", judgeLabel: judge?.label ?? `評審${secondary[1]}`, mode: "secondary" };
   }
-  const final = field.match(/^決評(美感|故事|創意)(一|二|三|[1-9]\d*)$/);
+  const final = field.match(/^決評(美感|故事|創意)([1-9]\d*)$/);
   if (final) {
     const judge = JUDGES[judgeIndexFromSuffix(final[2])];
     return { label: final[1], judgeLabel: judge?.label ?? `評審${final[2]}`, mode: "final" };
@@ -90,8 +90,6 @@ function fieldsForJudgeCount(mode: "secondary" | "final", judgeCount: number, cr
 }
 
 function judgeIndexFromSuffix(suffix: string): number {
-  const builtinIndex = JUDGES.findIndex((judge) => judge.suffix === suffix);
-  if (builtinIndex >= 0) return builtinIndex;
   const numeric = Number(suffix);
   return Number.isInteger(numeric) && numeric > 0 ? numeric - 1 : -1;
 }

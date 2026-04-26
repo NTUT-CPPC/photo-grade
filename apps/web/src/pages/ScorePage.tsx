@@ -5,6 +5,7 @@ import { emitScore } from "../api/socket";
 import { SubmittedScoresPanel } from "../components/SubmittedScoresPanel";
 import { TwoPaneShell } from "../components/TwoPaneShell";
 import { modeLabel, useGallery } from "../state/gallery";
+import { judgeIndexForField } from "../state/work-scores";
 import type { Mode } from "../types";
 import { fieldsForMode } from "@photo-grade/shared";
 
@@ -155,13 +156,4 @@ function finalCriterionKey(step: number): "aesthetic" | "story" | "creativity" {
   if (FINAL_STEPS[step] === "故事") return "story";
   if (FINAL_STEPS[step] === "創意") return "creativity";
   return "aesthetic";
-}
-
-function judgeIndexForField(field: string): number {
-  const match = field.match(/(一|二|三|[1-9]\d*)$/);
-  if (!match) return -1;
-  if (match[1] === "一") return 0;
-  if (match[1] === "二") return 1;
-  if (match[1] === "三") return 2;
-  return Number(match[1]) - 1;
 }

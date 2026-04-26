@@ -64,11 +64,8 @@ export function useWorkScores(base: string | undefined): {
 
 export function judgeIndexForField(field: string): number {
   if (field === "初評") return 0;
-  const match = field.match(/(一|二|三|[1-9]\d*)$/);
+  const match = field.match(/([1-9]\d*)$/);
   if (!match) return -1;
-  if (match[1] === "一") return 0;
-  if (match[1] === "二") return 1;
-  if (match[1] === "三") return 2;
   return Number(match[1]) - 1;
 }
 

@@ -11,15 +11,16 @@ describe("shared rules", () => {
   it("validates score ranges", () => {
     expect(validateScore("初評", 0)).toBe(true);
     expect(validateScore("初評", 4)).toBe(false);
-    expect(validateScore("複評一", 5)).toBe(true);
+    expect(validateScore("複評1", 5)).toBe(true);
     expect(validateScore("複評4", 5)).toBe(true);
     expect(validateScore("決評故事5", 3)).toBe(true);
-    expect(validateScore("決評美感三", 2)).toBe(false);
+    expect(validateScore("決評美感3", 2)).toBe(false);
+    expect(validateScore("複評一", 5)).toBe(false);
   });
 
   it("generates score fields for more than three judges", () => {
-    expect(fieldsForMode("secondary", undefined, 5)).toEqual(["複評一", "複評二", "複評三", "複評4", "複評5"]);
-    expect(fieldsForMode("final", "creativity", 4)).toEqual(["決評創意一", "決評創意二", "決評創意三", "決評創意4"]);
+    expect(fieldsForMode("secondary", undefined, 5)).toEqual(["複評1", "複評2", "複評3", "複評4", "複評5"]);
+    expect(fieldsForMode("final", "creativity", 4)).toEqual(["決評創意1", "決評創意2", "決評創意3", "決評創意4"]);
   });
 
   it("normalizes legacy form headers", () => {

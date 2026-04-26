@@ -50,6 +50,9 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] `npm audit --audit-level=moderate` 通過。
 - [x] `docker compose config` 通過。
 - [x] 本機 HTTP smoke：`/api/health=200`、`/view=200`、`/host=401`。
+- [x] Docker 實跑：app、worker、postgres、redis 都能啟動。
+- [x] Docker HTTP smoke：`/api/health=200`、`/view=200`、`/host=401`、`/admin=401`。
+- [x] Docker `./data` 子目錄自動建立。
 - [x] Commit history 已建立：
   - `7b2017e chore: scaffold docker node judging app`
   - `0188caf feat: integrate import media scoring frontend`
@@ -58,9 +61,9 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 
 ### In Progress / Next
 
-- [ ] Docker Desktop 啟動後，執行 `docker compose up --build -d` 實際容器驗證。
-- [ ] 在 Docker 環境驗證 app/worker/postgres/redis 都能啟動。
-- [ ] 驗證 `./data` 自動建立所有子目錄。
+- [x] Docker Desktop 啟動後，執行 `docker compose up --build -d` 實際容器驗證。
+- [x] 在 Docker 環境驗證 app/worker/postgres/redis 都能啟動。
+- [x] 驗證 `./data` 自動建立所有子目錄。
 - [ ] 用瀏覽器檢查 `/view`、`/host`、`/score`、`/admin` 主要 UI。
 - [ ] 匯入 sample CSV，確認 dry-run 與 confirm flow。
 - [ ] 確認 worker 下載作品、產生 original/preview/thumbnail/metadata。
@@ -70,7 +73,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 
 ### Known Environment Notes
 
-- 先前 Docker CLI 可用，但 Docker Desktop Linux engine 未啟動，`docker compose up` 失敗。使用者已表示 Docker Desktop 已打開，下一步要重試。
+- Docker Desktop 已啟動；第一次容器實跑發現 runner image 漏複製 workspace-local dependencies，app/worker 找不到 `csv-parse`。已更新 Dockerfile 並重建成功。
 - Reviewer subagent 受 usage limit 影響未完成；主 agent 需要自行做最終 review。
 - `node_modules`、build output、`data` 都是 ignored，不應提交。
 

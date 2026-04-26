@@ -1020,7 +1020,7 @@ button:disabled {
   }
 
   .two-pane-shell--compact-photo .photo-pane {
-    height: 38%;
+    height: 20%;
     min-height: 5rem;
   }
 

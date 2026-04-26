@@ -76,6 +76,8 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] Admin 評審設定改為草稿編輯，需按 `儲存` 才寫回，並支援拖曳排序。
 - [x] Score 頁面改為使用完整評審名單產生欄位，不再忽略第三位之後的評審。
 - [x] 後端新增 `PUT /api/admin/judges` 以一次儲存評審名單與排序。
+- [x] 匯入格式新增可空白 `編號` 欄位；空白時用資料列順序自動編號。
+- [x] 匯入作品代碼固定加 `a/b` 後綴：單張也會是 `123a`，兩張為 `123a`、`123b`。
 - [x] Commit history 已建立：
   - `7b2017e chore: scaffold docker node judging app`
   - `0188caf feat: integrate import media scoring frontend`
@@ -90,6 +92,8 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
   - `fd0782e feat: support scoring fields beyond three judges`
   - `a97db82 feat: add bulk judge ordering api`
   - `c8e50df feat: add sortable judge settings and dynamic score fields`
+  - `1f6b692 fix: load all configured judges in score page`
+  - `26f95a0 feat: add optional submission numbering for imports`
 
 ### In Progress / Next
 
@@ -107,6 +111,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 驗證 `PUT /api/admin/judges` 可保存評審排序與新增項目。
 - [x] 驗證四位以上評審時，Score 頁會顯示第四位以後的評分欄位。
 - [x] 驗證 `複評4` 可通過後端分數驗證並寫入 DB。
+- [x] 驗證匯入 normalization 會產出 `123a`、`123b` 與空白編號 fallback `2a`。
 - [ ] Fine tuning：補更完整的 admin import history / sheet sync retry UI。
 - [ ] Fine tuning：針對多作品資料做更完整的 host 切換與 score/view 同步瀏覽器測試。
 - [ ] Fine tuning：補 mobile screenshot 檢查與 UI 細節修整。
@@ -246,6 +251,7 @@ Support both old Google Form headers and normalized headers.
 
 Examples:
 
+- `編號`, `投稿編號`, or `作品編號`; optional. Blank values fall back to row order.
 - `作品1 名稱` or `作品1_名稱`
 - `作品1 檔案` or `作品1_檔案`
 - `作品1 創作理念` or `作品1_創作理念`
@@ -254,6 +260,8 @@ Examples:
 - `電子郵件地址`, `電子郵件`, or `Email`
 
 Work 2 is optional if its file URL is blank.
+
+Work codes are derived from the submission number plus a work suffix: work 1 is `a`, work 2 is `b`. A single-work submission still gets `a` (for example `123a`) so the visible code does not reveal whether there was a second submission. If `編號` is blank, use row order as the base number.
 
 Current MVP only supports public Google Drive links and public URLs. Do not implement private Drive/OAuth flow unless explicitly requested later.
 

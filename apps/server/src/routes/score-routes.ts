@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { defaultFieldForRound, isScoreRound, type JudgingMode } from "@photo-grade/shared";
-import { basicAuth } from "../auth.js";
+import { requireAuth } from "../auth.js";
 import { prisma } from "../prisma.js";
 import { normalizeScoreRequest } from "../services/score-request.js";
 import { submitScores, scoresForWork } from "../services/score-service.js";
@@ -24,7 +24,7 @@ scoreRoutes.get("/api/scores/:workKey", async (req, res, next) => {
   }
 });
 
-scoreRoutes.post("/api/scores", basicAuth("score", "admin"), async (req, res, next) => {
+scoreRoutes.post("/api/scores", requireAuth(), async (req, res, next) => {
   try {
     const result = await submitScores(await normalizeScoreRequest(req.body));
     emitScoreSubmitted(result);
@@ -35,7 +35,7 @@ scoreRoutes.post("/api/scores", basicAuth("score", "admin"), async (req, res, ne
   }
 });
 
-scoreRoutes.post("/submit_score", basicAuth("score", "admin"), async (req, res, next) => {
+scoreRoutes.post("/submit_score", requireAuth(), async (req, res, next) => {
   try {
     const result = await submitScores(await normalizeScoreRequest(req.body));
     emitScoreSubmitted(result);

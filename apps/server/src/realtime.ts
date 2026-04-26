@@ -2,7 +2,7 @@ import type { Server as HttpServer } from "node:http";
 import { Server } from "socket.io";
 import type { ScoreChangedPayload } from "@photo-grade/shared";
 import { env } from "./env.js";
-import { isAuthorizedHeader } from "./auth.js";
+import { isAuthorizedBasicHeader } from "./auth.js";
 import { getPresentationState, setPresentationState, type PresentationPatch } from "./services/presentation-service.js";
 import { normalizeScoreRequest } from "./services/score-request.js";
 import { submitScores } from "./services/score-service.js";
@@ -21,7 +21,7 @@ export function attachRealtime(server: HttpServer): Server {
 
     socket.on("host:setState", (payload: PresentationPatch, ack?: Ack) => {
       handle(ack, async () => {
-        assertSocketRole(socket.handshake.headers.authorization, "host");
+        assertSocketAuthenticated(socket);
         const state = await setPresentationState(payload);
         emitStateChanged(state);
         return state;
@@ -30,7 +30,7 @@ export function attachRealtime(server: HttpServer): Server {
 
     socket.on("sync:set_idx", (payload: PresentationPatch, ack?: Ack) => {
       handle(ack, async () => {
-        assertSocketRole(socket.handshake.headers.authorization, "host");
+        assertSocketAuthenticated(socket);
         const state = await setPresentationState({ idx: payload.idx ?? payload.index, base: payload.base });
         emitStateChanged(state);
         return state;
@@ -39,7 +39,7 @@ export function attachRealtime(server: HttpServer): Server {
 
     socket.on("host:navigate", (payload: PresentationPatch, ack?: Ack) => {
       handle(ack, async () => {
-        assertSocketRole(socket.handshake.headers.authorization, "host");
+        assertSocketAuthenticated(socket);
         const state = await setPresentationState({ idx: payload.idx ?? payload.index, base: payload.base });
         emitStateChanged(state);
         return state;
@@ -48,7 +48,7 @@ export function attachRealtime(server: HttpServer): Server {
 
     socket.on("sync:set_mode", (payload: PresentationPatch, ack?: Ack) => {
       handle(ack, async () => {
-        assertSocketRole(socket.handshake.headers.authorization, "host");
+        assertSocketAuthenticated(socket);
         const state = await setPresentationState({ mode: payload.mode });
         emitStateChanged(state);
         return state;
@@ -57,7 +57,7 @@ export function attachRealtime(server: HttpServer): Server {
 
     socket.on("host:mode", (payload: PresentationPatch, ack?: Ack) => {
       handle(ack, async () => {
-        assertSocketRole(socket.handshake.headers.authorization, "host");
+        assertSocketAuthenticated(socket);
         const state = await setPresentationState({ mode: payload.mode });
         emitStateChanged(state);
         return state;
@@ -66,7 +66,7 @@ export function attachRealtime(server: HttpServer): Server {
 
     socket.on("score:submit", (payload: unknown, ack?: Ack) => {
       handle(ack, async () => {
-        assertSocketRole(socket.handshake.headers.authorization, "score");
+        assertSocketAuthenticated(socket);
         const result = await submitScores(await normalizeScoreRequest(payload));
         emitScoreSubmitted(result);
         emitScoreChanged(result);
@@ -78,8 +78,8 @@ export function attachRealtime(server: HttpServer): Server {
   return io;
 }
 
-function assertSocketRole(header: string | undefined, role: "host" | "score"): void {
-  if (isAuthorizedHeader(header, role) || isAuthorizedHeader(header, "admin")) return;
+function assertSocketAuthenticated(socket: { handshake: { headers: { authorization?: string } } }): void {
+  if (isAuthorizedBasicHeader(socket.handshake.headers.authorization)) return;
   throw new Error("Unauthorized socket event.");
 }
 

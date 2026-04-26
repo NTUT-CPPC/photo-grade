@@ -6,7 +6,7 @@ import cors from "cors";
 import express from "express";
 import multer from "multer";
 import { env } from "./env.js";
-import { basicAuth } from "./auth.js";
+import { requireAuth } from "./auth.js";
 import { enqueueImport } from "./queue.js";
 import { attachRealtime } from "./realtime.js";
 import { scoreRoutes } from "./routes/score-routes.js";
@@ -91,7 +91,7 @@ app.get("/api/judges", async (_req, res, next) => {
   }
 });
 
-app.get("/api/admin/judges", basicAuth("admin"), async (_req, res, next) => {
+app.get("/api/admin/judges", requireAuth(), async (_req, res, next) => {
   try {
     res.json({ judges: await listJudges() });
   } catch (error) {
@@ -99,7 +99,7 @@ app.get("/api/admin/judges", basicAuth("admin"), async (_req, res, next) => {
   }
 });
 
-app.post("/api/admin/judges", basicAuth("admin"), async (req, res, next) => {
+app.post("/api/admin/judges", requireAuth(), async (req, res, next) => {
   try {
     res.status(201).json({ judge: await addJudge(firstString(req.body?.name) ?? "") });
   } catch (error) {
@@ -107,7 +107,7 @@ app.post("/api/admin/judges", basicAuth("admin"), async (req, res, next) => {
   }
 });
 
-app.put("/api/admin/judges", basicAuth("admin"), async (req, res, next) => {
+app.put("/api/admin/judges", requireAuth(), async (req, res, next) => {
   try {
     res.json({ judges: await replaceJudges(req.body?.judges ?? []) });
   } catch (error) {
@@ -115,7 +115,7 @@ app.put("/api/admin/judges", basicAuth("admin"), async (req, res, next) => {
   }
 });
 
-app.delete("/api/admin/judges/:id", basicAuth("admin"), async (req, res, next) => {
+app.delete("/api/admin/judges/:id", requireAuth(), async (req, res, next) => {
   try {
     await deleteJudge(firstString(req.params.id) ?? "");
     res.status(204).end();
@@ -124,19 +124,19 @@ app.delete("/api/admin/judges/:id", basicAuth("admin"), async (req, res, next) =
   }
 });
 
-app.get("/api/admin/import/template.csv", basicAuth("admin"), (_req, res) => {
+app.get("/api/admin/import/template.csv", requireAuth(), (_req, res) => {
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", "attachment; filename=\"photo-grade-template.csv\"");
   res.send(importTemplateCsvBuffer());
 });
 
-app.get("/api/admin/import/template.xlsx", basicAuth("admin"), (_req, res) => {
+app.get("/api/admin/import/template.xlsx", requireAuth(), (_req, res) => {
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", "attachment; filename=\"photo-grade-template.xlsx\"");
   res.send(importTemplateXlsxBuffer());
 });
 
-app.post(["/api/admin/import/dry-run", "/api/admin/imports/dry-run"], basicAuth("admin"), upload.any(), async (req, res, next) => {
+app.post(["/api/admin/import/dry-run", "/api/admin/imports/dry-run"], requireAuth(), upload.any(), async (req, res, next) => {
   try {
     const files = (req.files ?? []) as Express.Multer.File[];
     const file = files[0];
@@ -151,7 +151,7 @@ app.post(["/api/admin/import/dry-run", "/api/admin/imports/dry-run"], basicAuth(
   }
 });
 
-app.post(["/api/admin/import/confirm", "/api/admin/imports/:id/confirm"], basicAuth("admin"), async (req, res, next) => {
+app.post(["/api/admin/import/confirm", "/api/admin/imports/:id/confirm"], requireAuth(), async (req, res, next) => {
   try {
     const importId = firstString(req.params.id) ?? firstString(req.body?.importId) ?? firstString(req.body?.id);
     if (!importId) throw new Error("importId is required.");
@@ -163,7 +163,7 @@ app.post(["/api/admin/import/confirm", "/api/admin/imports/:id/confirm"], basicA
   }
 });
 
-app.get(["/api/admin/import/progress/:id", "/api/admin/imports/:id"], basicAuth("admin"), async (req, res, next) => {
+app.get(["/api/admin/import/progress/:id", "/api/admin/imports/:id"], requireAuth(), async (req, res, next) => {
   try {
     const id = firstString(req.params.id);
     if (!id) throw new Error("importId is required.");
@@ -183,7 +183,7 @@ app.get(["/api/admin/import/progress/:id", "/api/admin/imports/:id"], basicAuth(
   }
 });
 
-app.get("/api/admin/imports", basicAuth("admin"), async (_req, res, next) => {
+app.get("/api/admin/imports", requireAuth(), async (_req, res, next) => {
   try {
     res.json(await prisma.importBatch.findMany({ orderBy: { createdAt: "desc" }, take: 20 }));
   } catch (error) {
@@ -194,7 +194,7 @@ app.get("/api/admin/imports", basicAuth("admin"), async (_req, res, next) => {
 app.use(scoreRoutes);
 app.use(stateRoutes);
 
-app.post("/api/sheet-sync/drain", basicAuth("admin"), async (_req, res, next) => {
+app.post("/api/sheet-sync/drain", requireAuth(), async (_req, res, next) => {
   try {
     await processSheetSync();
     res.status(202).json({ ok: true });
@@ -203,9 +203,9 @@ app.post("/api/sheet-sync/drain", basicAuth("admin"), async (_req, res, next) =>
   }
 });
 
-app.use("/host", basicAuth("host", "admin"), staticWeb());
-app.use("/score", basicAuth("score", "admin"), staticWeb());
-app.use("/admin", basicAuth("admin"), staticWeb());
+app.use("/host", requireAuth(), staticWeb());
+app.use("/score", requireAuth(), staticWeb());
+app.use("/admin", requireAuth(), staticWeb());
 app.use("/view", staticWeb());
 app.use("/", staticWeb());
 

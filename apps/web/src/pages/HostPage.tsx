@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { getScore } from "../api/client";
 import { ExifTable } from "../components/ExifTable";
+import { SubmittedScoresPanel } from "../components/SubmittedScoresPanel";
 import { TwoPaneShell } from "../components/TwoPaneShell";
 import { modeLabel, useGallery } from "../state/gallery";
 import type { Mode, PhotoItem } from "../types";
@@ -9,23 +8,7 @@ const MODES: Mode[] = ["initial", "secondary", "final"];
 
 export function HostPage() {
   const gallery = useGallery("host");
-  const [score, setScore] = useState<string | null>(null);
   const item = gallery.current;
-
-  useEffect(() => {
-    if (!item) return;
-    let live = true;
-    getScore(item.base)
-      .then((value) => {
-        if (live) setScore(value);
-      })
-      .catch(() => {
-        if (live) setScore(null);
-      });
-    return () => {
-      live = false;
-    };
-  }, [item?.base]);
 
   return (
     <TwoPaneShell
@@ -38,7 +21,7 @@ export function HostPage() {
     >
       <ModePicker value={gallery.mode} onChange={(mode) => void gallery.changeMode(mode)} />
       <PhotoDetails item={item} mode={gallery.mode} position={gallery.idx + 1} total={gallery.items.length} />
-      <div className="score-display">{score ? `目前分數：${score}` : "目前分數：-"}</div>
+      <SubmittedScoresPanel base={item?.base} mode={gallery.mode} />
       <ExifTable info={itemInfo(item)} />
       <Status loading={gallery.loading} error={gallery.error} />
     </TwoPaneShell>

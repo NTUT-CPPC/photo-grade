@@ -2,6 +2,7 @@ import { Send, Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { getJudges, submitScore } from "../api/client";
 import { emitScore } from "../api/socket";
+import { SubmittedScoresPanel } from "../components/SubmittedScoresPanel";
 import { TwoPaneShell } from "../components/TwoPaneShell";
 import { modeLabel, useGallery } from "../state/gallery";
 import type { Mode } from "../types";
@@ -72,6 +73,7 @@ export function ScorePage() {
         <h1>{concept?.title ?? item?.base ?? "No photo"}</h1>
         <small>{item ? `${item.base}_mini.jpg` : "-"}</small>
       </header>
+      <SubmittedScoresPanel base={item?.base} mode={gallery.mode} />
       <section className="score-panel">
         <h2>請輸入評分</h2>
         {gallery.mode === "final" ? (

@@ -32,6 +32,11 @@ app.use(express.json({ limit: "5mb" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.get("/api/runtime-config", (_req, res) =>
+  res.json({
+    entryBaseUrl: normalizeBaseUrl(env.PUBLIC_ENTRY_URL || env.APP_BASE_URL || `http://localhost:${env.PORT}`)
+  })
+);
 
 app.use("/media/:kind/:file", (req, res) => {
   const kind = req.params.kind;
@@ -188,4 +193,8 @@ function toDryRunResponse(id: string, dryRun: { totalRows: number; works: Array<
 function firstString(value: unknown): string | undefined {
   if (Array.isArray(value)) return firstString(value[0]);
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function normalizeBaseUrl(url: string): string {
+  return url.replace(/\/+$/, "");
 }

@@ -9,7 +9,9 @@ export function App() {
 
   return (
     <>
-      <TopNav />
+      <div className="app-toolbar">
+        <TopNav />
+      </div>
       {path.startsWith("/admin") ? <AdminPage /> : null}
       {path.startsWith("/host") ? <HostPage /> : null}
       {path.startsWith("/score") ? <ScorePage /> : null}

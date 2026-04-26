@@ -13,6 +13,10 @@ type RequestOptions = RequestInit & {
   allowEmpty?: boolean;
 };
 
+type RuntimeConfigResponse = {
+  entryBaseUrl?: string;
+};
+
 function url(path: string) {
   if (/^https?:\/\//.test(path)) return path;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
@@ -74,6 +78,12 @@ function normalizeItems(payload: unknown): PhotoItem[] {
 export async function getItems(): Promise<PhotoItem[]> {
   const payload = await firstOk<unknown>(["/api/items", "/api/photos", "/items", "/photos"]);
   return normalizeItems(payload);
+}
+
+export async function getRuntimeConfig(): Promise<{ entryBaseUrl: string }> {
+  const payload = await firstOk<RuntimeConfigResponse>(["/api/runtime-config"]);
+  const entryBaseUrl = payload.entryBaseUrl?.trim() || window.location.origin;
+  return { entryBaseUrl: entryBaseUrl.replace(/\/+$/, "") };
 }
 
 export async function getSheetRecords(): Promise<SheetRecord[]> {

@@ -61,6 +61,10 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 確認 score submit 寫入 DB，host 頁可顯示目前分數。
 - [x] 確認 Socket.IO `state:changed` 與 `score:changed` 在 REST 寫入後會廣播。
 - [x] 修正 Google Sheet sync 未設定時 score 狀態卡在 `PROCESSING` 的問題；現在會標記 `FAILED` 並保留 outbox retry。
+- [x] Top nav 改為折疊式導覽：`/view` 預設顯示 `View + Login`，不直接露出受保護路由。
+- [x] Host 模式 top nav dropdown 增加 View 入口 QR code。
+- [x] 新增 runtime 設定 `PUBLIC_ENTRY_URL` 與 `/api/runtime-config`，讓入口網址可由 `.env` 控制。
+- [x] Top nav 改為頁面內佔位，不再固定懸浮遮擋主畫面。
 - [x] Commit history 已建立：
   - `7b2017e chore: scaffold docker node judging app`
   - `0188caf feat: integrate import media scoring frontend`
@@ -79,6 +83,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 確認 worker 下載作品、產生 original/preview/thumbnail/metadata。
 - [x] 確認 host state API 可寫入並廣播目前作品狀態。
 - [x] 確認 score 送分後 host 顯示分數，DB 有分數，Socket.IO 有廣播，Sheet sync disabled 狀態合理。
+- [x] 驗證 `PUBLIC_ENTRY_URL` 可由 `/api/runtime-config` 讀取並反映在 Host QR 入口連結。
 - [ ] Fine tuning：補更完整的 admin import history / sheet sync retry UI。
 - [ ] Fine tuning：針對多作品資料做更完整的 host 切換與 score/view 同步瀏覽器測試。
 - [ ] Fine tuning：補 mobile screenshot 檢查與 UI 細節修整。
@@ -267,6 +272,7 @@ After meaningful frontend changes:
 ## Development Rules For Future Agents
 
 - Keep commits small and named by behavior.
+- 每完成一個可驗證段落就提交一次 commit，避免累積過大未提交改動。
 - Update `Progress` in this file before and after major work segments.
 - Do not create a second backend package or schema. Use `apps/server`.
 - Do not write runtime files outside `DATA_DIR`.

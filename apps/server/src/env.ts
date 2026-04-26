@@ -8,6 +8,7 @@ const EnvSchema = z.object({
   NODE_ENV: z.string().default("development"),
   PORT: z.coerce.number().default(8080),
   APP_BASE_URL: z.string().default("http://localhost:8080"),
+  PUBLIC_ENTRY_URL: z.string().optional(),
   DATABASE_URL: z.string().default("postgresql://photo_grade:photo_grade@localhost:5432/photo_grade"),
   REDIS_URL: z.string().default("redis://localhost:6379"),
   DATA_DIR: z.string().default(path.resolve(process.cwd(), "data")),

@@ -21,6 +21,12 @@ Docker-first 攝影評分系統。它取代舊 Flask 臨時評分器，提供後
    ADMIN_PASSWORD=change-me-admin
    ```
 
+   若對外提供固定入口網址（例如反向代理或公網網域），請一併設定：
+
+   ```env
+   PUBLIC_ENTRY_URL=https://your-domain.example.com
+   ```
+
 3. 啟動：
 
    ```powershell
@@ -30,9 +36,11 @@ Docker-first 攝影評分系統。它取代舊 Flask 臨時評分器，提供後
 4. 開啟：
 
    - Admin: http://localhost:8080/admin
-   - Host: http://localhost:8080/host
-   - Score: http://localhost:8080/score
-   - View: http://localhost:8080/view
+- Host: http://localhost:8080/host
+- Score: http://localhost:8080/score
+- View: http://localhost:8080/view
+
+`PUBLIC_ENTRY_URL` 會用於 Host 頁面 top nav 內的 View QR code 與入口連結。
 
 `/host`、`/score`、`/admin` 需要 HTTP Basic Auth；`/view` 不需要登入。
 

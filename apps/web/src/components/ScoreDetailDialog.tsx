@@ -20,8 +20,6 @@ export function ScoreDetailDialog({ base, mode, rows, judges, onClose }: Props) 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const grouped = groupByJudge(rows, mode, judges);
-
   return (
     <div className="score-detail-backdrop" onClick={onClose} role="presentation">
       <div className="score-detail" role="dialog" aria-modal="true" aria-label="評分明細" onClick={(e) => e.stopPropagation()}>
@@ -32,18 +30,27 @@ export function ScoreDetailDialog({ base, mode, rows, judges, onClose }: Props) 
             ×
           </button>
         </header>
-        <div className="score-detail__body">
-          {grouped.length ? (
-            mode === "final" ? (
-              <FinalTable grouped={grouped} />
-            ) : (
-              <SimpleList grouped={grouped} />
-            )
-          ) : (
-            <p className="score-detail__empty">尚無分數</p>
-          )}
-        </div>
+        <div className="score-detail__body">{renderBody(mode, rows, judges)}</div>
       </div>
+    </div>
+  );
+}
+
+function renderBody(mode: Mode, rows: WorkScoreRow[], judges: Judge[] | null) {
+  if (mode === "initial") return <InitialDetail rows={rows} />;
+  const grouped = groupByJudge(rows, mode, judges);
+  if (!grouped.length) return <p className="score-detail__empty">尚無分數</p>;
+  if (mode === "final") return <FinalTable grouped={grouped} />;
+  return <SimpleList grouped={grouped} />;
+}
+
+function InitialDetail({ rows }: { rows: WorkScoreRow[] }) {
+  const value = rows.find((r) => r.field === "初評")?.value;
+  if (value == null) return <p className="score-detail__empty">尚無分數</p>;
+  return (
+    <div className="score-detail__initial">
+      <span className="score-detail__initial-label">通過評審數</span>
+      <span className="score-detail__initial-value">{value}</span>
     </div>
   );
 }

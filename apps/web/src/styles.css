@@ -494,6 +494,24 @@ button:disabled {
   text-align: center;
 }
 
+.score-detail__initial {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.6rem 0.5rem;
+}
+
+.score-detail__initial-label {
+  color: #f5d27a;
+  font-weight: 600;
+}
+
+.score-detail__initial-value {
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .score-detail__list {
   list-style: none;
   margin: 0;
@@ -1011,16 +1029,8 @@ button:disabled {
     min-height: 0;
   }
 
-  .info-pane--with-footer .info-scroll {
-    padding-bottom: 4.6rem;
-  }
-
   .info-footer {
-    position: static;
-    max-height: none;
-    border-top: 0;
-    padding: 0.55rem 1rem 0;
-    background: transparent;
+    max-height: 70%;
   }
 
   .admin-photo-panel {
@@ -1030,16 +1040,8 @@ button:disabled {
 }
 
 @media (max-height: 520px) and (orientation: landscape) {
-  .info-pane--with-footer .info-scroll {
-    padding-bottom: 4.6rem;
-  }
-
   .info-footer {
-    position: static;
-    max-height: none;
-    border-top: 0;
-    padding: 0.55rem 0 0;
-    background: transparent;
+    max-height: 75%;
   }
 }
 

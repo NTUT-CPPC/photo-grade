@@ -149,6 +149,24 @@ function buildFlash(payload: FlashPayload, judges: Judge[] | null): Flash | null
 
   if (!flat.length) return null;
 
+  const detectedMode: Mode | null = (payload.mode as Mode | undefined) ?? flat[0]?.mode ?? null;
+
+  if (detectedMode === "initial") {
+    const initialEntry = flat.find((entry) => entry.field === "初評") ?? flat[0];
+    return {
+      key: payload.submittedAt ?? payload.at ?? new Date().toISOString(),
+      mode: "initial",
+      criterion: null,
+      judges: [
+        {
+          judgeLabel: "通過評審數",
+          judgeIndex: 0,
+          entries: [{ criterionLabel: initialEntry.criterionLabel, value: initialEntry.value }]
+        }
+      ]
+    };
+  }
+
   const byJudge = new Map<number, FlashJudge>();
   const fallback: FlashJudge[] = [];
   for (const entry of flat) {
@@ -173,7 +191,6 @@ function buildFlash(payload: FlashPayload, judges: Judge[] | null): Flash | null
     ...fallback
   ];
 
-  const detectedMode: Mode | null = (payload.mode as Mode | undefined) ?? flat[0]?.mode ?? null;
   const allCriteria = new Set(flat.map((entry) => entry.criterionLabel));
   const criterion =
     detectedMode === "final" && allCriteria.size === 1 ? flat[0]?.criterionLabel ?? null : null;

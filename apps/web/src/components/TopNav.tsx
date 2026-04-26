@@ -13,7 +13,7 @@ const PROTECTED_ROUTES: RouteItem[] = [
   { href: "/score", label: "Score" }
 ];
 
-const ALL_ROUTES: RouteItem[] = [...PROTECTED_ROUTES, { href: "/view", label: "View" }];
+const ALL_ROUTES: RouteItem[] = [{ href: "/view", label: "View" }, ...PROTECTED_ROUTES];
 
 function isActive(path: string, href: RouteItem["href"]) {
   if (href === "/view") return path === "/" || path.startsWith("/view");
@@ -90,9 +90,6 @@ export function TopNav() {
 
   return (
     <nav className="top-nav" aria-label="Application routes" ref={navRef}>
-      <a className={`top-nav-link ${isActive(path, "/view") ? "active" : ""}`} href="/view">
-        View
-      </a>
       <button
         type="button"
         className={`top-nav-trigger ${open ? "open" : ""}`}
@@ -106,6 +103,7 @@ export function TopNav() {
       </button>
       {open ? (
         <div className="top-nav-menu" role="menu" aria-label={publicMode ? "Login links" : "Application links"}>
+          {publicMode ? <p className="top-nav-caption">登入模式</p> : null}
           {menuItems.map((item) => (
             <a
               key={item.href}

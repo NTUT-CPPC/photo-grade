@@ -65,6 +65,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] Host 模式 top nav dropdown 增加 View 入口 QR code。
 - [x] 新增 runtime 設定 `PUBLIC_ENTRY_URL` 與 `/api/runtime-config`，讓入口網址可由 `.env` 控制。
 - [x] Top nav 改為頁面內佔位，不再固定懸浮遮擋主畫面。
+- [x] Top nav 重新設計為極簡單按鈕（`Login/Menu`）+ dropdown，縮小常駐佔用空間。
 - [x] Commit history 已建立：
   - `7b2017e chore: scaffold docker node judging app`
   - `0188caf feat: integrate import media scoring frontend`
@@ -72,6 +73,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
   - `86e0dcc chore: prune duplicate backend workspace`
   - `5b3ec4c docs: add agent progress ledger`
   - `aa4f4f1 fix: include workspace dependencies in docker image`
+  - `5bd1270 feat: add configurable entry url and host QR nav`
 
 ### In Progress / Next
 

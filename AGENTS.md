@@ -96,6 +96,12 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
   - `c8e50df feat: add sortable judge settings and dynamic score fields`
   - `1f6b692 fix: load all configured judges in score page`
   - `26f95a0 feat: add optional submission numbering for imports`
+- [x] Basic Auth 帳密簡化為單一 `AUTH_USERNAME`/`AUTH_PASSWORD`，移除 host/score/admin 三組。
+- [x] 任何成功登入皆可使用 `/host`、`/score`、`/admin`，不再做角色分流。
+- [x] 加入 OIDC Authorization Code (PKCE) 登入；以 `AUTH_MODE=basic|oidc` 切換。
+- [x] OIDC 模式使用 `express-session` + `connect-redis`（共用 `REDIS_URL`）；Socket.IO handshake 也共用 session。
+- [x] 前端 TopNav 依 `/api/runtime-config` 回傳的 `authMode` 切換 Login / Logout 行為。
+- [x] README 新增「登入模式 (Auth)」段落，列出 Basic / OIDC 環境變數與常見 OP 設定提示。
 
 ### In Progress / Next
 
@@ -204,17 +210,26 @@ Use `assertInsideDataDir()` before writing or reading runtime paths derived from
 
 ## Public Routes And Auth
 
-Initial auth mode is HTTP Basic Auth only.
+`AUTH_MODE` 切換登入機制：
 
-- `/view`: public.
-- `/host`: host or admin.
-- `/score`: score or admin.
-- `/admin`: admin.
-- `POST /api/scores`: score or admin.
-- `POST /api/host/state`: host or admin.
-- `POST /api/sync/*`: host or admin.
-- `POST /api/admin/*`: admin.
-- `POST /api/sheet-sync/drain`: admin.
+- `basic`（預設）：HTTP Basic Auth，比對單一 `AUTH_USERNAME`/`AUTH_PASSWORD`。
+- `oidc`：OpenID Connect Authorization Code (PKCE) flow；session 由 `express-session` + `connect-redis` 管理，cookie 名稱 `pg.sid`。Socket.IO 共用同一個 session。
+
+任何成功登入都允許使用所有受保護介面（host、score、admin），沒有角色限制。
+
+公開路由：
+
+- `/view`、`/`、`/api/health`、`/api/runtime-config`、`/api/works*`、`/api/items`、`/api/judges`、`/api/scores/:workKey`、`/api/host/state`（GET）、`/api/sync/*`（GET）、`/media/*`。
+- `GET /auth/login`、`GET /auth/callback`：OIDC 模式下處理登入流程。
+- `GET /api/auth/me`：回 `{ authenticated, mode, user? }` 給前端判斷。
+- `POST /auth/logout`：清 session（OIDC 模式會嘗試 redirect 到 OP `end_session_endpoint`）。
+
+需要登入的路由（一律走 `requireAuth()`）：
+
+- `/host`、`/score`、`/admin`（HTML）。
+- `POST /api/scores`、`POST /submit_score`。
+- `POST /api/host/state`、`POST /api/sync/idx|/set_idx`、`POST /api/sync/mode|/set_mode`。
+- `POST /api/admin/*`、`GET /api/admin/*`、`POST /api/sheet-sync/drain`。
 
 Socket.IO:
 

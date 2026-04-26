@@ -10,16 +10,15 @@ Docker-first 攝影評分系統。它取代舊 Flask 臨時評分器，提供後
    Copy-Item .env.example .env
    ```
 
-2. 編輯 `.env`，至少修改三組帳密：
+2. 編輯 `.env`，至少設定一組登入帳密（給 host/score/admin 共用，登入成功就能進三個介面）：
 
    ```env
-   HOST_USERNAME=host
-   HOST_PASSWORD=change-me-host
-   SCORE_USERNAME=score
-   SCORE_PASSWORD=change-me-score
-   ADMIN_USERNAME=admin
-   ADMIN_PASSWORD=change-me-admin
+   AUTH_MODE=basic
+   AUTH_USERNAME=admin
+   AUTH_PASSWORD=change-me
    ```
+
+   若要改用 OIDC，請看下方 [登入模式 (Auth)](#登入模式-auth)。
 
    若對外提供固定入口網址（例如反向代理或公網網域），請一併設定：
 
@@ -42,7 +41,62 @@ Docker-first 攝影評分系統。它取代舊 Flask 臨時評分器，提供後
 
 `PUBLIC_ENTRY_URL` 會用於 Host 頁面 top nav 內的 View QR code 與入口連結。
 
-`/host`、`/score`、`/admin` 需要 HTTP Basic Auth；`/view` 不需要登入。
+`/host`、`/score`、`/admin` 需要登入；`/view` 不需要登入。任何成功登入都可以使用三個受保護的介面，沒有角色限制。
+
+## 登入模式 (Auth)
+
+`AUTH_MODE` 控制登入機制：
+
+- `AUTH_MODE=basic`（預設）：HTTP Basic Auth，現場手動輸入單一帳號密碼。瀏覽器會跳出原生登入彈窗。
+- `AUTH_MODE=oidc`：走 OpenID Connect Authorization Code (PKCE) flow，由公司 / 第三方 OIDC OP 認證。Session 用 Redis (`REDIS_URL`) 存放。
+
+無論哪種模式，**`/view` 都不需要登入**；登入成功後三個受保護介面（host / score / admin）都能進，沒有額外角色檢查。
+
+### Basic 模式
+
+```env
+AUTH_MODE=basic
+AUTH_USERNAME=admin
+AUTH_PASSWORD=change-me
+```
+
+### OIDC 模式
+
+需要在 OP 端先註冊一個 client（confidential / web 類型）並把 callback URL 設成 `${APP_BASE_URL}/auth/callback`，例如本機 `http://localhost:8080/auth/callback`。Keycloak、Auth0、Google、Microsoft Entra (Azure AD) 等任何標準 OIDC OP 皆可。
+
+```env
+AUTH_MODE=oidc
+
+# Session
+SESSION_SECRET=請填一段足夠長的隨機字串
+COOKIE_SECURE=auto      # auto: 在 NODE_ENV=production 時為 true；可改 true/false 強制覆蓋
+
+# OIDC client
+OIDC_ISSUER_URL=https://your-op.example.com/realms/photo-grade
+OIDC_CLIENT_ID=photo-grade
+OIDC_CLIENT_SECRET=請填 OP 給的 secret
+OIDC_REDIRECT_URI=                   # 留空時自動使用 ${APP_BASE_URL}/auth/callback
+OIDC_SCOPES=openid profile email
+OIDC_POST_LOGOUT_REDIRECT_URI=       # 選填；OP 支援 end_session_endpoint 時會帶
+```
+
+| 變數 | 必要 | 說明 |
+| --- | --- | --- |
+| `AUTH_MODE` | 是 | `basic` 或 `oidc`。 |
+| `SESSION_SECRET` | OIDC 模式必填 | 用來簽 session cookie。 |
+| `COOKIE_SECURE` | 否 | `auto` / `true` / `false`。反向代理走 HTTPS 時通常 `auto` 即可（會在 production 自動 secure）。 |
+| `OIDC_ISSUER_URL` | OIDC 模式必填 | OP 的 issuer，會用 `/.well-known/openid-configuration` 自動 discovery。 |
+| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | OIDC 模式必填 | 在 OP 端註冊的 client 憑證。 |
+| `OIDC_REDIRECT_URI` | 否 | 預設 `${APP_BASE_URL}/auth/callback`；若部署網域與 `APP_BASE_URL` 不同請手動填。 |
+| `OIDC_SCOPES` | 否 | 預設 `openid profile email`。 |
+| `OIDC_POST_LOGOUT_REDIRECT_URI` | 否 | 設定後 logout 會把使用者導回此網址（前提是 OP 支援 `end_session_endpoint`）。 |
+
+#### 行為摘要
+
+- 未登入造訪 `/host`、`/score`、`/admin` 會被導向 `/auth/login?returnTo=...`，登入成功後再回到原本頁面。
+- 受保護的 API（例：`POST /api/scores`）未登入時回 `401`，前端會處理。
+- `POST /auth/logout` 會銷毀本地 session；若 OP 提供 `end_session_endpoint`，會 redirect 過去做 OP-side signout，否則直接回 `/view`。
+- Socket.IO 在 OIDC 模式下共用同一個 session cookie；handshake 時 cookie 對應的 session 必須有 `user`，否則 `host:setState`、`score:submit` 等事件會被拒絕。
 
 ## data 目錄
 
@@ -150,7 +204,7 @@ docker compose up --build
 瀏覽器檢查重點：
 
 - `/view` 可直接開。
-- `/host`、`/score`、`/admin` 未登入會要求帳密。
+- Basic 模式下 `/host`、`/score`、`/admin` 未登入會跳瀏覽器帳密彈窗；OIDC 模式下會 redirect 到 OP 登入頁，登入完成自動回原頁。
 - Admin 匯入 sample CSV 後，`data/originals`、`data/previews`、`data/thumbnails`、`data/metadata` 會產生檔案。
 - Host 切換作品後 Score/View 同步。
 - Score 送出後 Host 顯示即時送分提示。

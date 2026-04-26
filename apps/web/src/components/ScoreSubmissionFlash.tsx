@@ -11,28 +11,32 @@ type FlashPayload = ScoreNotification & {
   submittedAt?: string;
 };
 
-type FlashEntry = {
+type FlashJudge = {
   judgeLabel: string;
-  criterionLabel: string;
-  value: number;
   judgeIndex: number;
+  entries: Array<{ criterionLabel: string; value: number }>;
 };
 
 type Flash = {
   key: string;
   mode: Mode | null;
-  entries: FlashEntry[];
+  criterion: string | null;
+  judges: FlashJudge[];
 };
 
 type Props = {
   base?: string;
 };
 
+const FADE_MS = 280;
+const HOLD_MS = 2000;
+
 export function ScoreSubmissionFlash({ base }: Props) {
   const [flash, setFlash] = useState<Flash | null>(null);
   const [visible, setVisible] = useState(false);
   const [judges, setJudges] = useState<Judge[] | null>(null);
-  const timer = useRef<number | null>(null);
+  const hideTimer = useRef<number | null>(null);
+  const removeTimer = useRef<number | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -57,38 +61,37 @@ export function ScoreSubmissionFlash({ base }: Props) {
       if (!next) return;
       setFlash(next);
       setVisible(true);
-      if (timer.current != null) window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => {
+      if (hideTimer.current != null) window.clearTimeout(hideTimer.current);
+      if (removeTimer.current != null) window.clearTimeout(removeTimer.current);
+      hideTimer.current = window.setTimeout(() => {
         setVisible(false);
-        timer.current = window.setTimeout(() => {
+        removeTimer.current = window.setTimeout(() => {
           setFlash(null);
-          timer.current = null;
-        }, 320);
-      }, 2000);
+          removeTimer.current = null;
+        }, FADE_MS + 40);
+      }, HOLD_MS);
     });
   }, [base, judges]);
 
   useEffect(() => {
     return () => {
-      if (timer.current != null) window.clearTimeout(timer.current);
+      if (hideTimer.current != null) window.clearTimeout(hideTimer.current);
+      if (removeTimer.current != null) window.clearTimeout(removeTimer.current);
     };
   }, []);
 
   if (!flash) return null;
 
+  const title = buildTitle(flash);
+
   return (
     <div className={`score-flash${visible ? " show" : ""}`} role="status" aria-live="polite">
-      <div className="score-flash__title">
-        {flash.mode ? `${modeLabel(flash.mode)} 已送出` : "已送出"}
-      </div>
+      <div className="score-flash__title">{title}</div>
       <div className="score-flash__grid">
-        {flash.entries.map((entry, idx) => (
-          <div className="score-flash__row" key={`${entry.judgeLabel}-${entry.criterionLabel}-${idx}`}>
-            <span className="score-flash__judge">{entry.judgeLabel}</span>
-            {entry.criterionLabel && entry.criterionLabel !== modeLabelOrEmpty(flash.mode) ? (
-              <span className="score-flash__criterion">{entry.criterionLabel}</span>
-            ) : null}
-            <span className="score-flash__value">{entry.value}</span>
+        {flash.judges.map((judge) => (
+          <div className="score-flash__row" key={`${judge.judgeIndex}-${judge.judgeLabel}`}>
+            <span className="score-flash__name">{judge.judgeLabel}</span>
+            <span className="score-flash__values">{joinValues(judge.entries)}</span>
           </div>
         ))}
       </div>
@@ -96,9 +99,20 @@ export function ScoreSubmissionFlash({ base }: Props) {
   );
 }
 
+function joinValues(entries: FlashJudge["entries"]): string {
+  if (!entries.length) return "–";
+  return entries.map((e) => String(e.value)).join(" / ");
+}
+
+function buildTitle(flash: Flash): string {
+  if (!flash.mode) return "已送出";
+  const head = modeLabel(flash.mode);
+  if (flash.mode === "final" && flash.criterion) return `${head}・${flash.criterion} 已送出`;
+  return `${head} 已送出`;
+}
+
 function buildFlash(payload: FlashPayload, judges: Judge[] | null): Flash | null {
-  const entries: FlashEntry[] = [];
-  let detectedMode: Mode | null = (payload.mode as Mode | undefined) ?? null;
+  const flat: Array<{ field: string; value: number; criterionLabel: string; judgeLabel: string; judgeIndex: number; mode: Mode }> = [];
 
   if (Array.isArray(payload.scores)) {
     for (const item of payload.scores) {
@@ -106,13 +120,14 @@ function buildFlash(payload: FlashPayload, judges: Judge[] | null): Flash | null
       const meta = scoreLabel(item.field);
       const idx = judgeIndexForField(item.field);
       const label = judgeNameAt(idx, judges) ?? item.judgeLabel ?? meta.judgeLabel;
-      entries.push({
-        judgeLabel: label,
-        criterionLabel: item.label ?? meta.label,
+      flat.push({
+        field: item.field,
         value: item.value,
-        judgeIndex: idx
+        criterionLabel: item.label ?? meta.label,
+        judgeLabel: label,
+        judgeIndex: idx,
+        mode: meta.mode as Mode
       });
-      detectedMode = detectedMode ?? meta.mode;
     }
   } else if (payload.scores && typeof payload.scores === "object") {
     for (const [field, raw] of Object.entries(payload.scores)) {
@@ -121,26 +136,53 @@ function buildFlash(payload: FlashPayload, judges: Judge[] | null): Flash | null
       const meta = scoreLabel(field);
       const idx = judgeIndexForField(field);
       const label = judgeNameAt(idx, judges) ?? meta.judgeLabel;
-      entries.push({
-        judgeLabel: label,
-        criterionLabel: meta.label,
+      flat.push({
+        field,
         value,
-        judgeIndex: idx
+        criterionLabel: meta.label,
+        judgeLabel: label,
+        judgeIndex: idx,
+        mode: meta.mode as Mode
       });
-      detectedMode = detectedMode ?? meta.mode;
     }
   }
 
-  if (!entries.length) return null;
-  entries.sort((a, b) => {
-    if (a.judgeIndex !== b.judgeIndex) return a.judgeIndex - b.judgeIndex;
-    return 0;
-  });
+  if (!flat.length) return null;
+
+  const byJudge = new Map<number, FlashJudge>();
+  const fallback: FlashJudge[] = [];
+  for (const entry of flat) {
+    if (entry.judgeIndex < 0) {
+      fallback.push({
+        judgeLabel: entry.judgeLabel,
+        judgeIndex: -1,
+        entries: [{ criterionLabel: entry.criterionLabel, value: entry.value }]
+      });
+      continue;
+    }
+    let bucket = byJudge.get(entry.judgeIndex);
+    if (!bucket) {
+      bucket = { judgeLabel: entry.judgeLabel, judgeIndex: entry.judgeIndex, entries: [] };
+      byJudge.set(entry.judgeIndex, bucket);
+    }
+    bucket.entries.push({ criterionLabel: entry.criterionLabel, value: entry.value });
+  }
+
+  const judgeRows = [
+    ...Array.from(byJudge.entries()).sort((a, b) => a[0] - b[0]).map(([, row]) => row),
+    ...fallback
+  ];
+
+  const detectedMode: Mode | null = (payload.mode as Mode | undefined) ?? flat[0]?.mode ?? null;
+  const allCriteria = new Set(flat.map((entry) => entry.criterionLabel));
+  const criterion =
+    detectedMode === "final" && allCriteria.size === 1 ? flat[0]?.criterionLabel ?? null : null;
 
   return {
     key: payload.submittedAt ?? payload.at ?? new Date().toISOString(),
     mode: detectedMode,
-    entries
+    criterion,
+    judges: judgeRows
   };
 }
 
@@ -148,11 +190,4 @@ function judgeNameAt(index: number, judges: Judge[] | null): string | null {
   if (index < 0 || !judges) return null;
   const name = judges[index]?.name?.trim();
   return name ? name : null;
-}
-
-function modeLabelOrEmpty(mode: Mode | null): string {
-  if (!mode) return "";
-  if (mode === "initial") return "初評";
-  if (mode === "secondary") return "複評";
-  return "決評";
 }

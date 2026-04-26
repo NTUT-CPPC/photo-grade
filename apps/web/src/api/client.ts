@@ -107,6 +107,14 @@ export async function removeJudge(judgeId: string): Promise<void> {
   });
 }
 
+export async function saveJudges(judges: Array<{ id?: string; name: string }>): Promise<Judge[]> {
+  const payload = await request<{ judges: Judge[] }>("/api/admin/judges", {
+    method: "PUT",
+    body: JSON.stringify({ judges })
+  });
+  return payload.judges;
+}
+
 export async function getSheetRecords(): Promise<SheetRecord[]> {
   return firstOk<SheetRecord[]>([
     "/api/sheet-records",

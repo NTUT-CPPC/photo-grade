@@ -70,7 +70,7 @@ export function scoreLabel(field: string): { label: string; judgeLabel: string; 
   return { label: field, judgeLabel: field, mode: "initial" };
 }
 
-export function fieldsForMode(mode: JudgingMode, criterionKey?: string, judgeCount = JUDGES.length): string[] {
+export function fieldsForMode(mode: JudgingMode, criterionKey?: string, judgeCount: number = JUDGES.length): string[] {
   if (mode === "initial") return ["初評"];
   if (mode === "secondary") return fieldsForJudgeCount("secondary", judgeCount);
   const criterion = FINAL_CRITERIA.find((c) => c.key === criterionKey) ?? FINAL_CRITERIA[0];

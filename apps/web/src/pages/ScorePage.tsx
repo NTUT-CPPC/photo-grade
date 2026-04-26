@@ -5,9 +5,9 @@ import { emitScore } from "../api/socket";
 import { TwoPaneShell } from "../components/TwoPaneShell";
 import { modeLabel, useGallery } from "../state/gallery";
 import type { Mode } from "../types";
+import { fieldsForMode } from "@photo-grade/shared";
 
 const FINAL_STEPS = ["美感", "故事", "創意"] as const;
-const JUDGE_SUFFIXES = ["一", "二", "三"] as const;
 const DEFAULT_JUDGE_LABELS = ["評審一", "評審二", "評審三"];
 
 export function ScorePage() {
@@ -134,26 +134,31 @@ function scoreFields(mode: Mode, step: number, judges: string[]): Field[] {
     return [{ key: "初評", label: "", options: [0, 1, 2, 3] }];
   }
 
-  if (mode === "secondary") {
-    return JUDGE_SUFFIXES.map((suffix, index) => ({
-      key: `複評${suffix}`,
-      label: judges[index] ?? DEFAULT_JUDGE_LABELS[index],
-      options: [3, 4, 5]
-    }));
-  }
-
-  const prefix = `決評${FINAL_STEPS[step]}`;
-  return JUDGE_SUFFIXES.map((suffix, index) => ({
-    key: `${prefix}${suffix}`,
-    label: judges[index] ?? DEFAULT_JUDGE_LABELS[index],
+  const criterionKey = mode === "final" ? finalCriterionKey(step) : undefined;
+  return fieldsForMode(mode, criterionKey, Math.max(1, judges.length)).map((key, index) => ({
+    key,
+    label: judges[index] ?? DEFAULT_JUDGE_LABELS[index] ?? `評審${index + 1}`,
     options: [3, 4, 5]
   }));
 }
 
 function judgeNameForField(field: string, judges: string[]): string {
   if (field === "初評") return judges[0] ?? DEFAULT_JUDGE_LABELS[0];
-  const suffix = field.slice(-1);
-  const index = JUDGE_SUFFIXES.indexOf(suffix as (typeof JUDGE_SUFFIXES)[number]);
-  if (index >= 0) return judges[index] ?? DEFAULT_JUDGE_LABELS[index];
-  return field;
+  const index = judgeIndexForField(field);
+  return index >= 0 ? judges[index] ?? DEFAULT_JUDGE_LABELS[index] ?? `評審${index + 1}` : field;
+}
+
+function finalCriterionKey(step: number): "aesthetic" | "story" | "creativity" {
+  if (FINAL_STEPS[step] === "故事") return "story";
+  if (FINAL_STEPS[step] === "創意") return "creativity";
+  return "aesthetic";
+}
+
+function judgeIndexForField(field: string): number {
+  const match = field.match(/(一|二|三|[1-9]\d*)$/);
+  if (!match) return -1;
+  if (match[1] === "一") return 0;
+  if (match[1] === "二") return 1;
+  if (match[1] === "三") return 2;
+  return Number(match[1]) - 1;
 }

@@ -1,17 +1,24 @@
-import { Check, Download, Plus, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Check, Download, GripVertical, Plus, RefreshCw, Save, Trash2, Upload } from "lucide-react";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { confirmImport, createJudge, dryRunImport, getImportProgress, getJudges, removeJudge } from "../api/client";
+import { confirmImport, dryRunImport, getImportProgress, getJudges, saveJudges } from "../api/client";
 import { onImportProgress } from "../api/socket";
 import type { ImportDryRunResult, ImportProgress, Judge } from "../types";
+
+type JudgeDraft = {
+  clientId: string;
+  id?: string;
+  name: string;
+};
 
 export function AdminPage() {
   const [sourcePath, setSourcePath] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [dryRun, setDryRun] = useState<ImportDryRunResult | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
-  const [judges, setJudges] = useState<Judge[]>([]);
+  const [judges, setJudges] = useState<JudgeDraft[]>([]);
   const [judgeName, setJudgeName] = useState("");
   const [judgeBusy, setJudgeBusy] = useState(false);
+  const [draggingJudgeId, setDraggingJudgeId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +60,7 @@ export function AdminPage() {
 
   async function refreshJudges() {
     try {
-      setJudges(await getJudges());
+      setJudges((await getJudges()).map(toJudgeDraft));
     } catch {
       setJudges([]);
     }
@@ -90,33 +97,50 @@ export function AdminPage() {
     }
   }
 
-  async function addJudgeName() {
+  function addJudgeName() {
     const name = judgeName.trim();
     if (!name) return;
+    setError(null);
+    setJudges((current) => [...current, { clientId: `new-${Date.now()}-${Math.random().toString(36).slice(2)}`, name }]);
+    setJudgeName("");
+  }
+
+  function deleteJudgeName(clientId: string) {
+    setJudges((current) => current.filter((judge) => judge.clientId !== clientId));
+  }
+
+  async function saveJudgeDrafts() {
+    const payload = judges.map((judge) => ({ id: judge.id, name: judge.name.trim() }));
+    if (payload.some((judge) => !judge.name)) {
+      setError("評審名稱不可空白。");
+      return;
+    }
     setJudgeBusy(true);
     setError(null);
     try {
-      await createJudge(name);
-      setJudgeName("");
-      await refreshJudges();
+      setJudges((await saveJudges(payload)).map(toJudgeDraft));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Create judge failed");
+      setError(err instanceof Error ? err.message : "Save judges failed");
     } finally {
       setJudgeBusy(false);
     }
   }
 
-  async function deleteJudgeName(judgeId: string) {
-    setJudgeBusy(true);
-    setError(null);
-    try {
-      await removeJudge(judgeId);
-      await refreshJudges();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete judge failed");
-    } finally {
-      setJudgeBusy(false);
-    }
+  function renameJudge(clientId: string, name: string) {
+    setJudges((current) => current.map((judge) => (judge.clientId === clientId ? { ...judge, name } : judge)));
+  }
+
+  function moveJudge(sourceId: string, targetId: string) {
+    if (sourceId === targetId) return;
+    setJudges((current) => {
+      const sourceIndex = current.findIndex((judge) => judge.clientId === sourceId);
+      const targetIndex = current.findIndex((judge) => judge.clientId === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+      const next = [...current];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
   }
 
   return (
@@ -138,16 +162,36 @@ export function AdminPage() {
               placeholder="新增評審名字"
               aria-label="Judge name"
             />
-            <button type="button" onClick={() => void addJudgeName()} disabled={judgeBusy || !judgeName.trim()}>
+            <button type="button" onClick={addJudgeName} disabled={judgeBusy || !judgeName.trim()}>
               <Plus size={16} />
               新增
             </button>
+            <button type="button" onClick={() => void saveJudgeDrafts()} disabled={judgeBusy || !judges.length} title="儲存目前評審名單與排序。">
+              <Save size={16} />
+              儲存
+            </button>
           </div>
           <ul className="judge-list">
-            {judges.map((judge) => (
-              <li key={judge.id}>
-                <span>{judge.name}</span>
-                <button type="button" onClick={() => void deleteJudgeName(judge.id)} disabled={judgeBusy} aria-label={`刪除 ${judge.name}`}>
+            {judges.map((judge, index) => (
+              <li
+                key={judge.clientId}
+                draggable={!judgeBusy}
+                onDragStart={() => setDraggingJudgeId(judge.clientId)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (draggingJudgeId) moveJudge(draggingJudgeId, judge.clientId);
+                  setDraggingJudgeId(null);
+                }}
+                onDragEnd={() => setDraggingJudgeId(null)}
+              >
+                <GripVertical size={16} className="drag-handle" aria-hidden="true" />
+                <span className="judge-order">{index + 1}</span>
+                <input
+                  value={judge.name}
+                  onChange={(event) => renameJudge(judge.clientId, event.target.value)}
+                  aria-label={`評審 ${index + 1} 名稱`}
+                />
+                <button type="button" onClick={() => deleteJudgeName(judge.clientId)} disabled={judgeBusy || judges.length <= 1} aria-label={`刪除 ${judge.name}`}>
                   <Trash2 size={15} />
                 </button>
               </li>
@@ -219,6 +263,10 @@ export function AdminPage() {
       </section>
     </main>
   );
+}
+
+function toJudgeDraft(judge: Judge): JudgeDraft {
+  return { clientId: judge.id, id: judge.id, name: judge.name };
 }
 
 function DryRunResult({ result, total }: { result: ImportDryRunResult; total: number }) {

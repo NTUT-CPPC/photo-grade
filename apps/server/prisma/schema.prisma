@@ -92,3 +92,13 @@ model ImportBatch {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+
+model Judge {
+  id        String   @id @default(cuid())
+  name      String
+  sortOrder Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
+}

@@ -13,6 +13,8 @@ import { scoreRoutes } from "./routes/score-routes.js";
 import { stateRoutes } from "./routes/state-routes.js";
 import { prisma } from "./prisma.js";
 import { createImportBatch } from "./services/import-service.js";
+import { importTemplateCsvBuffer, importTemplateXlsxBuffer } from "./services/import-template-service.js";
+import { addJudge, deleteJudge, listJudges } from "./services/judge-service.js";
 import { listWorks, metadataForWork } from "./services/work-service.js";
 import { processSheetSync } from "./services/sheet-service.js";
 import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
@@ -79,6 +81,51 @@ app.get("/api/works/:workId/metadata", async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.get("/api/judges", async (_req, res, next) => {
+  try {
+    res.json({ judges: await listJudges() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/judges", basicAuth("admin"), async (_req, res, next) => {
+  try {
+    res.json({ judges: await listJudges() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/judges", basicAuth("admin"), async (req, res, next) => {
+  try {
+    res.status(201).json({ judge: await addJudge(firstString(req.body?.name) ?? "") });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/admin/judges/:id", basicAuth("admin"), async (req, res, next) => {
+  try {
+    await deleteJudge(firstString(req.params.id) ?? "");
+    res.status(204).end();
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/import/template.csv", basicAuth("admin"), (_req, res) => {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", "attachment; filename=\"photo-grade-template.csv\"");
+  res.send(importTemplateCsvBuffer());
+});
+
+app.get("/api/admin/import/template.xlsx", basicAuth("admin"), (_req, res) => {
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", "attachment; filename=\"photo-grade-template.xlsx\"");
+  res.send(importTemplateXlsxBuffer());
 });
 
 app.post(["/api/admin/import/dry-run", "/api/admin/imports/dry-run"], basicAuth("admin"), upload.any(), async (req, res, next) => {

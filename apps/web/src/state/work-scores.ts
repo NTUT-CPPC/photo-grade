@@ -13,6 +13,7 @@ export type JudgeRow = {
 export type CompactSummary =
   | { kind: "empty" }
   | { kind: "value"; modeLabel: string; value: number }
+  | { kind: "list"; modeLabel: string; values: number[] }
   | { kind: "criteria"; modeLabel: string; entries: Array<{ label: string; value: number }> };
 
 export const FINAL_CRITERIA_ORDER = ["美感", "故事", "創意"] as const;
@@ -81,8 +82,8 @@ export function summarizeForMode(rows: WorkScoreRow[], mode: Mode): CompactSumma
   if (mode === "secondary") {
     const submitted = rows.filter((r) => r.round === "secondary");
     if (!submitted.length) return { kind: "empty" };
-    const total = submitted.reduce((sum, r) => sum + r.value, 0);
-    return { kind: "value", modeLabel: "複評", value: total };
+    const ordered = [...submitted].sort((a, b) => judgeIndexForField(a.field) - judgeIndexForField(b.field));
+    return { kind: "list", modeLabel: "複評", values: ordered.map((r) => r.value) };
   }
 
   const entries: Array<{ label: string; value: number }> = [];

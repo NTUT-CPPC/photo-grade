@@ -5,7 +5,7 @@ import { buildAuthorizationUrl, buildEndSessionUrl, exchangeCallback, pkce } fro
 
 export const authRoutes = Router();
 
-function safeReturnTo(value: unknown): string {
+export function safeReturnTo(value: unknown): string {
   if (typeof value !== "string") return "/host";
   if (!value.startsWith("/") || value.startsWith("//")) return "/host";
   return value;
@@ -77,6 +77,14 @@ authRoutes.get("/auth/callback", async (req, res, next) => {
     );
     res.redirect(returnTo);
   } catch (error) {
+    if (req.session?.oidc) {
+      delete req.session.oidc;
+      try {
+        await new Promise<void>((resolve) => req.session.save(() => resolve()));
+      } catch {
+        // best-effort: session save failure on the error path is non-fatal
+      }
+    }
     next(error);
   }
 });
@@ -91,7 +99,8 @@ authRoutes.post("/auth/logout", async (req, res, next) => {
     let endSessionUrl: URL | null = null;
     try {
       endSessionUrl = await buildEndSessionUrl(idToken);
-    } catch {
+    } catch (err) {
+      console.warn("Failed to build OIDC end session URL:", err);
       endSessionUrl = null;
     }
     await new Promise<void>((resolve, reject) =>

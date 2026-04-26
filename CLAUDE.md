@@ -1,0 +1,1 @@
+read ./AGENTS.md as a reference

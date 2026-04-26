@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 import { env } from "./env.js";
 
@@ -8,7 +9,14 @@ export function isAuthorizedBasicHeader(header: string | undefined): boolean {
   if (sep < 0) return false;
   const username = decoded.slice(0, sep);
   const password = decoded.slice(sep + 1);
-  return username === env.AUTH_USERNAME && password === env.AUTH_PASSWORD;
+  return safeEqual(username, env.AUTH_USERNAME) && safeEqual(password, env.AUTH_PASSWORD);
+}
+
+function safeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a, "utf8");
+  const bBuf = Buffer.from(b, "utf8");
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
 }
 
 export function isSessionAuthenticated(req: Pick<Request, "session">): boolean {

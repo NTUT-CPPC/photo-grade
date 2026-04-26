@@ -78,6 +78,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 後端新增 `PUT /api/admin/judges` 以一次儲存評審名單與排序。
 - [x] 匯入格式新增可空白 `編號` 欄位；空白時用資料列順序自動編號。
 - [x] 匯入作品代碼固定加 `a/b` 後綴：單張也會是 `123a`，兩張為 `123a`、`123b`。
+- [x] AGENTS 補上「完成後測試與檢查策略」與「當前環境容器重啟套用變更」操作指引。
 - [x] Commit history 已建立：
   - `7b2017e chore: scaffold docker node judging app`
   - `0188caf feat: integrate import media scoring frontend`
@@ -299,6 +300,53 @@ After meaningful frontend changes:
 2. Run app.
 3. Use browser to inspect `/view`, `/host`, `/score`, `/admin`.
 4. Check mobile-ish narrow viewport if layout changes are substantial.
+
+## Post-Change Test And Check Strategy
+
+每次完成一個功能段落，至少執行以下分層檢查，並在提交前確認結果合理。
+
+1. Fast static checks:
+   - `npm run build`
+   - `npm test`
+2. Local runtime checks (non-Docker):
+   - `npm run dev` 或對應 server/worker 啟動命令可正常啟動。
+   - `GET /api/health` 回 `200`。
+3. Docker checks (目標環境):
+   - `docker compose up --build -d`
+   - `docker compose ps` 確認 `app`、`worker`、`postgres`、`redis` 都是 `running`。
+   - `docker compose logs --tail=200 app worker` 無持續性 crash loop。
+4. Auth and route checks:
+   - `/view` 可直接開啟。
+   - `/host`、`/score`、`/admin` 未登入時是 `401`。
+5. Core flow smoke checks:
+   - Admin 匯入 dry-run/confirm 可走通。
+   - Host 切換可同步到 score/view。
+   - Score 送分可寫入 DB 並觸發即時事件。
+6. Data placement checks:
+   - 非 DB 可變檔案只落在 `DATA_DIR`（Docker 預設 `/data`，host 對應 `./data`）。
+   - PostgreSQL 僅在 `postgres-data` volume。
+
+建議提交訊息中附上本段已完成的檢查類型（例如 build/test/docker smoke）。
+
+## Docker Restart Guide (Current Dev Environment)
+
+目標環境是 Docker，程式變更後用以下方式套用。
+
+1. 快速套用 app/worker 變更（保留 DB/Redis）:
+   - `docker compose up --build -d app worker`
+2. 完整重啟全部服務（需要重拉起整組容器）:
+   - `docker compose down`
+   - `docker compose up --build -d`
+3. 檢查狀態:
+   - `docker compose ps`
+   - `docker compose logs --tail=200 app worker`
+4. 常用健康檢查:
+   - `curl http://localhost:8080/api/health`
+   - 瀏覽器開啟 `http://localhost:8080/view`
+
+注意:
+- 不要用 `docker compose down -v`，除非明確要刪除 DB volume。
+- `./data` 是持久化資料；清理前先確認是否需要備份。
 
 ## Development Rules For Future Agents
 

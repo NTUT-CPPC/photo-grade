@@ -59,6 +59,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 匯入 sample CSV，確認 dry-run、confirm、worker 下載與影像處理 flow。
 - [x] 確認 `/data/originals`、`/data/previews`、`/data/thumbnails`、`/data/metadata` 產出 smoke 檔案。
 - [x] 確認 score submit 寫入 DB，host 頁可顯示目前分數。
+- [x] 確認 Socket.IO `state:changed` 與 `score:changed` 在 REST 寫入後會廣播。
 - [x] 修正 Google Sheet sync 未設定時 score 狀態卡在 `PROCESSING` 的問題；現在會標記 `FAILED` 並保留 outbox retry。
 - [x] Commit history 已建立：
   - `7b2017e chore: scaffold docker node judging app`
@@ -77,7 +78,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 匯入 sample CSV，確認 dry-run 與 confirm flow。
 - [x] 確認 worker 下載作品、產生 original/preview/thumbnail/metadata。
 - [x] 確認 host state API 可寫入並廣播目前作品狀態。
-- [x] 確認 score 送分後 host 顯示分數，DB 有分數，Sheet sync disabled 狀態合理。
+- [x] 確認 score 送分後 host 顯示分數，DB 有分數，Socket.IO 有廣播，Sheet sync disabled 狀態合理。
 - [ ] Fine tuning：補更完整的 admin import history / sheet sync retry UI。
 - [ ] Fine tuning：針對多作品資料做更完整的 host 切換與 score/view 同步瀏覽器測試。
 - [ ] Fine tuning：補 mobile screenshot 檢查與 UI 細節修整。

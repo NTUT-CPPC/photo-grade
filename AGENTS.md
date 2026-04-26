@@ -72,6 +72,10 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] Score 頁面改為從後端評審名單載入前三位顯示名稱。
 - [x] 後端新增 `/api/judges` 與 admin judges CRUD API。
 - [x] 後端新增 `/api/admin/import/template.csv`、`/api/admin/import/template.xlsx`。
+- [x] Scoring rules 支援超過三位評審：第四位起使用 `複評4`、`決評美感4` 這類欄位。
+- [x] Admin 評審設定改為草稿編輯，需按 `儲存` 才寫回，並支援拖曳排序。
+- [x] Score 頁面改為使用完整評審名單產生欄位，不再忽略第三位之後的評審。
+- [x] 後端新增 `PUT /api/admin/judges` 以一次儲存評審名單與排序。
 - [x] Commit history 已建立：
   - `7b2017e chore: scaffold docker node judging app`
   - `0188caf feat: integrate import media scoring frontend`
@@ -82,6 +86,10 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
   - `5bd1270 feat: add configurable entry url and host QR nav`
   - `8714c2c refactor: redesign compact top nav dropdown`
   - `065c8ce feat: add judge admin api and import template downloads`
+  - `b86f9c8 feat: add admin judge management and import guidance ui`
+  - `fd0782e feat: support scoring fields beyond three judges`
+  - `a97db82 feat: add bulk judge ordering api`
+  - `c8e50df feat: add sortable judge settings and dynamic score fields`
 
 ### In Progress / Next
 
@@ -96,6 +104,9 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 驗證 `PUBLIC_ENTRY_URL` 可由 `/api/runtime-config` 讀取並反映在 Host QR 入口連結。
 - [x] 驗證 judges API 可新增/刪除評審，且列表順序可用。
 - [x] 驗證 Admin UI 有評審管理區、範本下載按鈕與 dry-run/confirm tooltip。
+- [x] 驗證 `PUT /api/admin/judges` 可保存評審排序與新增項目。
+- [x] 驗證四位以上評審時，Score 頁會顯示第四位以後的評分欄位。
+- [x] 驗證 `複評4` 可通過後端分數驗證並寫入 DB。
 - [ ] Fine tuning：補更完整的 admin import history / sheet sync retry UI。
 - [ ] Fine tuning：針對多作品資料做更完整的 host 切換與 score/view 同步瀏覽器測試。
 - [ ] Fine tuning：補 mobile screenshot 檢查與 UI 細節修整。
@@ -216,11 +227,11 @@ Canonical modes:
 Fields:
 
 - 初評：`初評`，integer 0-3。
-- 複評：`複評一`、`複評二`、`複評三`，integer 3-5。
+- 複評：`複評一`、`複評二`、`複評三`，第四位起為 `複評4`、`複評5`...，integer 3-5。
 - 決評：
-  - `決評美感一/二/三`
-  - `決評故事一/二/三`
-  - `決評創意一/二/三`
+  - `決評美感一/二/三`，第四位起為 `決評美感4`、`決評美感5`...
+  - `決評故事一/二/三`，第四位起為 `決評故事4`、`決評故事5`...
+  - `決評創意一/二/三`，第四位起為 `決評創意4`、`決評創意5`...
   - integer 3-5。
 
 Filtering:

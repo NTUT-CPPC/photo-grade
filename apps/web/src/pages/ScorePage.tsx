@@ -24,11 +24,7 @@ export function ScorePage() {
     getJudges()
       .then((judges) => {
         if (!live || !judges.length) return;
-        const next = [...DEFAULT_JUDGE_LABELS];
-        judges.slice(0, 3).forEach((judge, index) => {
-          next[index] = judge.name;
-        });
-        setJudgeLabels(next);
+        setJudgeLabels(judges.map((judge) => judge.name));
       })
       .catch(() => undefined);
     return () => {

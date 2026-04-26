@@ -154,6 +154,6 @@ docker compose up --build
 
 ## Admin 內建工具
 
-- 評審設定：可在 Admin 頁面新增或刪除評審名字。Score 頁面會使用前 3 位評審名稱顯示欄位。
+- 評審設定：可在 Admin 頁面新增、刪除、拖曳排序評審名字，按 `儲存` 後寫回。Score 頁面會依完整評審名單產生欄位，不限 3 位。
 - 匯入範本下載：Admin 頁面可直接下載 CSV 與 Excel 範本，再填入投稿資料後做 dry-run/confirm。
 - 按鈕提示：`Dry run` 和 `Confirm` 按鈕有 tooltip 說明操作差異。

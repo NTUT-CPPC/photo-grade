@@ -1,6 +1,6 @@
-import { LogIn, Menu } from "lucide-react";
+import { LogIn, LogOut, Menu } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getRuntimeConfig } from "../api/client";
+import { getAuthStatus, getRuntimeConfig, logout, type AuthMode, type AuthStatus } from "../api/client";
 
 type RouteItem = {
   href: "/admin" | "/host" | "/score" | "/view";
@@ -20,14 +20,23 @@ function isActive(path: string, href: RouteItem["href"]) {
   return path.startsWith(href);
 }
 
+function loginHref(): string {
+  const returnTo = window.location.pathname || "/host";
+  return `/auth/login?returnTo=${encodeURIComponent(returnTo === "/" ? "/host" : returnTo)}`;
+}
+
 export function TopNav() {
   const path = window.location.pathname;
   const navRef = useRef<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
   const [entryBaseUrl, setEntryBaseUrl] = useState(window.location.origin);
+  const [authMode, setAuthMode] = useState<AuthMode>("basic");
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [viewQrCode, setViewQrCode] = useState("");
   const publicMode = isActive(path, "/view");
   const hostMode = path.startsWith("/host");
+  const isAuthenticated = authStatus?.authenticated ?? false;
+  const showLogout = authMode === "oidc" && isAuthenticated;
   const menuItems = publicMode ? PROTECTED_ROUTES : ALL_ROUTES;
   const viewEntryUrl = useMemo(() => `${entryBaseUrl.replace(/\/+$/, "")}/view`, [entryBaseUrl]);
 
@@ -56,9 +65,12 @@ export function TopNav() {
 
   useEffect(() => {
     let live = true;
-    getRuntimeConfig()
-      .then((config) => {
-        if (live) setEntryBaseUrl(config.entryBaseUrl);
+    Promise.all([getRuntimeConfig(), getAuthStatus().catch(() => null)])
+      .then(([config, status]) => {
+        if (!live) return;
+        setEntryBaseUrl(config.entryBaseUrl);
+        setAuthMode(config.authMode);
+        if (status) setAuthStatus(status);
       })
       .catch(() => undefined);
     return () => {
@@ -88,6 +100,24 @@ export function TopNav() {
     };
   }, [open, hostMode, viewEntryUrl]);
 
+  const handleLoginLink = (href: RouteItem["href"]) => (event: React.MouseEvent<HTMLAnchorElement>) => {
+    setOpen(false);
+    if (publicMode && authMode === "oidc" && !isAuthenticated) {
+      event.preventDefault();
+      window.location.href = `/auth/login?returnTo=${encodeURIComponent(href)}`;
+    }
+  };
+
+  const handleLogout = async () => {
+    setOpen(false);
+    try {
+      const result = await logout();
+      window.location.href = result.redirect ?? "/view";
+    } catch {
+      window.location.href = "/view";
+    }
+  };
+
   return (
     <nav className="top-nav" aria-label="Application routes" ref={navRef}>
       <button
@@ -95,26 +125,47 @@ export function TopNav() {
         className={`top-nav-trigger ${open ? "open" : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={publicMode ? "Login menu" : "Route menu"}
+        aria-label={publicMode && !isAuthenticated ? "Login menu" : "Route menu"}
         onClick={() => setOpen((value) => !value)}
       >
-        {publicMode ? <LogIn size={15} /> : <Menu size={15} />}
-        <span>{publicMode ? "Login" : "Menu"}</span>
+        {publicMode && !isAuthenticated ? <LogIn size={15} /> : <Menu size={15} />}
+        <span>{publicMode && !isAuthenticated ? "Login" : "Menu"}</span>
       </button>
       {open ? (
         <div className="top-nav-menu" role="menu" aria-label={publicMode ? "Login links" : "Application links"}>
-          {publicMode ? <p className="top-nav-caption">登入模式</p> : null}
-          {menuItems.map((item) => (
+          {publicMode && !isAuthenticated ? <p className="top-nav-caption">登入模式</p> : null}
+          {publicMode && authMode === "oidc" && !isAuthenticated ? (
             <a
-              key={item.href}
               role="menuitem"
-              className={isActive(path, item.href) ? "active" : ""}
-              href={item.href}
+              href={loginHref()}
               onClick={() => setOpen(false)}
             >
-              {item.label}
+              使用 OIDC 登入
             </a>
-          ))}
+          ) : (
+            menuItems.map((item) => (
+              <a
+                key={item.href}
+                role="menuitem"
+                className={isActive(path, item.href) ? "active" : ""}
+                href={item.href}
+                onClick={handleLoginLink(item.href)}
+              >
+                {item.label}
+              </a>
+            ))
+          )}
+          {showLogout ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="top-nav-logout"
+              onClick={handleLogout}
+            >
+              <LogOut size={14} />
+              <span>Logout</span>
+            </button>
+          ) : null}
           {hostMode ? (
             <section className="top-nav-qr">
               <p>Scan to open View mode</p>

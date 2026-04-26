@@ -111,6 +111,28 @@ button:disabled {
   color: #ffc107;
 }
 
+.top-nav-logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  justify-content: flex-start;
+  color: #cfcfcf;
+  background: #2b2b2b;
+  border: 1px solid #454545;
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.86rem;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.top-nav-logout:hover {
+  background: #353535;
+  border-color: #5a5a5a;
+}
+
 .top-nav-caption {
   margin: 0 0 0.15rem;
   font-size: 0.75rem;

@@ -15,8 +15,17 @@ type RequestOptions = RequestInit & {
   allowEmpty?: boolean;
 };
 
+export type AuthMode = "basic" | "oidc";
+
 type RuntimeConfigResponse = {
   entryBaseUrl?: string;
+  authMode?: AuthMode;
+};
+
+export type AuthStatus = {
+  authenticated: boolean;
+  mode: AuthMode;
+  user?: { sub: string; name?: string; email?: string };
 };
 
 function url(path: string) {
@@ -82,10 +91,19 @@ export async function getItems(): Promise<PhotoItem[]> {
   return normalizeItems(payload);
 }
 
-export async function getRuntimeConfig(): Promise<{ entryBaseUrl: string }> {
+export async function getRuntimeConfig(): Promise<{ entryBaseUrl: string; authMode: AuthMode }> {
   const payload = await firstOk<RuntimeConfigResponse>(["/api/runtime-config"]);
   const entryBaseUrl = payload.entryBaseUrl?.trim() || window.location.origin;
-  return { entryBaseUrl: entryBaseUrl.replace(/\/+$/, "") };
+  const authMode: AuthMode = payload.authMode === "oidc" ? "oidc" : "basic";
+  return { entryBaseUrl: entryBaseUrl.replace(/\/+$/, ""), authMode };
+}
+
+export async function getAuthStatus(): Promise<AuthStatus> {
+  return request<AuthStatus>("/api/auth/me");
+}
+
+export async function logout(): Promise<{ ok: boolean; redirect?: string }> {
+  return request<{ ok: boolean; redirect?: string }>("/auth/logout", { method: "POST" });
 }
 
 export async function getJudges(): Promise<Judge[]> {

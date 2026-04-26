@@ -15,7 +15,9 @@ type RequestOptions = RequestInit & {
 
 function url(path: string) {
   if (/^https?:\/\//.test(path)) return path;
-  return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  if (API_BASE) return `${API_BASE}${normalizedPath}`;
+  return new URL(normalizedPath, window.location.origin).toString();
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {

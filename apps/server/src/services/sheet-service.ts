@@ -7,7 +7,11 @@ export async function processSheetSync(scoreIds?: string[]): Promise<void> {
   const outboxItems = await claimOutboxItems(scoreIds);
   if (!outboxItems.length) return;
   if (!env.GOOGLE_SHEETS_ENABLED || !env.GOOGLE_SHEET_ID) {
-    await releaseOutboxItems(outboxItems.map((item) => item.id), "Google Sheets sync is disabled or GOOGLE_SHEET_ID is not configured.");
+    await releaseOutboxItems(
+      outboxItems.map((item) => item.id),
+      "Google Sheets sync is disabled or GOOGLE_SHEET_ID is not configured.",
+      outboxItems.map((item) => item.scoreId)
+    );
     return;
   }
 

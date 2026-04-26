@@ -53,27 +53,41 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] Docker 實跑：app、worker、postgres、redis 都能啟動。
 - [x] Docker HTTP smoke：`/api/health=200`、`/view=200`、`/host=401`、`/admin=401`。
 - [x] Docker `./data` 子目錄自動建立。
+- [x] Docker browser smoke：`/view`、`/host`、`/score`、`/admin` 主要頁面可開啟，能載入 smoke 測試作品。
+- [x] 修正 Docker runtime 靜態前端路徑，server 從 compiled `import.meta.url` 推算 repo root。
+- [x] 修正 Basic Auth userinfo URL 下的前端 API URL 解析，避免 fetch 對含帳密 URL 失敗。
+- [x] 匯入 sample CSV，確認 dry-run、confirm、worker 下載與影像處理 flow。
+- [x] 確認 `/data/originals`、`/data/previews`、`/data/thumbnails`、`/data/metadata` 產出 smoke 檔案。
+- [x] 確認 score submit 寫入 DB，host 頁可顯示目前分數。
+- [x] 修正 Google Sheet sync 未設定時 score 狀態卡在 `PROCESSING` 的問題；現在會標記 `FAILED` 並保留 outbox retry。
 - [x] Commit history 已建立：
   - `7b2017e chore: scaffold docker node judging app`
   - `0188caf feat: integrate import media scoring frontend`
   - `72a3dee chore: harden runtime integration`
   - `86e0dcc chore: prune duplicate backend workspace`
+  - `5b3ec4c docs: add agent progress ledger`
+  - `aa4f4f1 fix: include workspace dependencies in docker image`
 
 ### In Progress / Next
 
 - [x] Docker Desktop 啟動後，執行 `docker compose up --build -d` 實際容器驗證。
 - [x] 在 Docker 環境驗證 app/worker/postgres/redis 都能啟動。
 - [x] 驗證 `./data` 自動建立所有子目錄。
-- [ ] 用瀏覽器檢查 `/view`、`/host`、`/score`、`/admin` 主要 UI。
-- [ ] 匯入 sample CSV，確認 dry-run 與 confirm flow。
-- [ ] 確認 worker 下載作品、產生 original/preview/thumbnail/metadata。
-- [ ] 確認 host 切換後 score/view 同步。
-- [ ] 確認 score 送分後 host 顯示通知，DB 有分數，Sheet sync outbox 狀態合理。
-- [ ] 視 Docker/瀏覽器驗證結果補修 README、UI 或 API mismatch。
+- [x] 用瀏覽器檢查 `/view`、`/host`、`/score`、`/admin` 主要 UI。
+- [x] 匯入 sample CSV，確認 dry-run 與 confirm flow。
+- [x] 確認 worker 下載作品、產生 original/preview/thumbnail/metadata。
+- [x] 確認 host state API 可寫入並廣播目前作品狀態。
+- [x] 確認 score 送分後 host 顯示分數，DB 有分數，Sheet sync disabled 狀態合理。
+- [ ] Fine tuning：補更完整的 admin import history / sheet sync retry UI。
+- [ ] Fine tuning：針對多作品資料做更完整的 host 切換與 score/view 同步瀏覽器測試。
+- [ ] Fine tuning：補 mobile screenshot 檢查與 UI 細節修整。
 
 ### Known Environment Notes
 
 - Docker Desktop 已啟動；第一次容器實跑發現 runner image 漏複製 workspace-local dependencies，app/worker 找不到 `csv-parse`。已更新 Dockerfile 並重建成功。
+- Browser smoke 發現 server 在 npm workspace cwd 下找不到 `apps/web/dist`；已改用 `import.meta.url` 推算 repo root，Docker 重建後已驗證。
+- Browser Basic Auth smoke 使用 `http://user:password@localhost:8080/...` 時會讓相對 fetch 解析到含 userinfo URL；前端 API client 已改用 `window.location.origin` 產生乾淨 same-origin absolute URL。
+- Google Sheet 未啟用時，score 仍會成功寫 DB；outbox 保持 pending/retry，score 狀態會標成 `FAILED` 並記錄原因，避免現場評分被外部同步阻塞。
 - Reviewer subagent 受 usage limit 影響未完成；主 agent 需要自行做最終 review。
 - `node_modules`、build output、`data` 都是 ignored，不應提交。
 

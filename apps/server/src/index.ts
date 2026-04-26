@@ -1,6 +1,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
 import express from "express";
 import multer from "multer";
@@ -17,6 +18,8 @@ import { processSheetSync } from "./services/sheet-service.js";
 import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
 
 await ensureDataDirs();
+const serverDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(serverDir, "../../..");
 
 const app = express();
 const upload = multer({
@@ -159,7 +162,7 @@ server.listen(env.PORT, () => {
 });
 
 function staticWeb() {
-  const dist = path.resolve(process.cwd(), "apps/web/dist");
+  const dist = path.resolve(repoRoot, "apps/web/dist");
   const fallback = path.join(dist, "index.html");
   return [
     express.static(dist),

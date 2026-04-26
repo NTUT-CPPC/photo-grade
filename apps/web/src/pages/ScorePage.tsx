@@ -57,15 +57,62 @@ export function ScorePage() {
 
   const concept = item?.json?.concept ?? item?.concept;
 
+  const scoreInput = (
+    <section className="score-panel">
+      <h2>請輸入評分</h2>
+      {gallery.mode === "final" ? (
+        <div className="tab-bar">
+          {FINAL_STEPS.map((label, index) => (
+            <button
+              key={label}
+              className={index === step ? "active" : ""}
+              type="button"
+              onClick={() => {
+                setStep(index);
+                setValues({});
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="score-options">
+        {fields.map((field) => (
+          <div className="score-row" key={field.key}>
+            {field.label ? <span>{field.label}</span> : null}
+            {field.options.map((option) => (
+              <label className="score-btn" key={`${field.key}-${option}`}>
+                <input
+                  type="radio"
+                  name={field.key}
+                  value={option}
+                  checked={values[field.key] === String(option)}
+                  onChange={() => setValues((current) => ({ ...current, [field.key]: String(option) }))}
+                />
+                <span>{option}</span>
+              </label>
+            ))}
+          </div>
+        ))}
+      </div>
+      <button className="submit-btn" type="button" onClick={() => void handleSubmit()}>
+        {submitted ? <Check size={20} /> : <Send size={20} />}
+      </button>
+    </section>
+  );
+
   return (
     <TwoPaneShell
       item={item}
       photoQuality="mini"
+      compactPhoto
       canPrev={gallery.idx > 0}
       canNext={gallery.idx < gallery.items.length - 1}
       onPrev={() => resetForNavigation(() => void gallery.navigate(gallery.idx - 1))}
       onNext={() => resetForNavigation(() => void gallery.navigate(gallery.idx + 1))}
       onJump={(base) => resetForNavigation(() => gallery.jumpTo(base))}
+      footer={scoreInput}
     >
       <span className="mode-banner">模式：{modeLabel(gallery.mode)}</span>
       <header className="photo-details compact">
@@ -74,48 +121,6 @@ export function ScorePage() {
         <small>{item ? `${item.base}_mini.jpg` : "-"}</small>
       </header>
       <SubmittedScoresPanel base={item?.base} mode={gallery.mode} />
-      <section className="score-panel">
-        <h2>請輸入評分</h2>
-        {gallery.mode === "final" ? (
-          <div className="tab-bar">
-            {FINAL_STEPS.map((label, index) => (
-              <button
-                key={label}
-                className={index === step ? "active" : ""}
-                type="button"
-                onClick={() => {
-                  setStep(index);
-                  setValues({});
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        <div className="score-options">
-          {fields.map((field) => (
-            <div className="score-row" key={field.key}>
-              {field.label ? <span>{field.label}</span> : null}
-              {field.options.map((option) => (
-                <label className="score-btn" key={`${field.key}-${option}`}>
-                  <input
-                    type="radio"
-                    name={field.key}
-                    value={option}
-                    checked={values[field.key] === String(option)}
-                    onChange={() => setValues((current) => ({ ...current, [field.key]: String(option) }))}
-                  />
-                  <span>{option}</span>
-                </label>
-              ))}
-            </div>
-          ))}
-        </div>
-        <button className="submit-btn" type="button" onClick={() => void handleSubmit()}>
-          {submitted ? <Check size={20} /> : <Send size={20} />}
-        </button>
-      </section>
       {gallery.error ? <p className="system-note error">{gallery.error}</p> : null}
     </TwoPaneShell>
   );

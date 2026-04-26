@@ -1,6 +1,7 @@
 import type {
   ImportDryRunResult,
   ImportProgress,
+  Judge,
   Mode,
   PhotoItem,
   ScorePayload,
@@ -84,6 +85,26 @@ export async function getRuntimeConfig(): Promise<{ entryBaseUrl: string }> {
   const payload = await firstOk<RuntimeConfigResponse>(["/api/runtime-config"]);
   const entryBaseUrl = payload.entryBaseUrl?.trim() || window.location.origin;
   return { entryBaseUrl: entryBaseUrl.replace(/\/+$/, "") };
+}
+
+export async function getJudges(): Promise<Judge[]> {
+  const payload = await firstOk<{ judges?: Judge[] }>(["/api/judges", "/api/admin/judges"]);
+  return Array.isArray(payload.judges) ? payload.judges : [];
+}
+
+export async function createJudge(name: string): Promise<Judge> {
+  const payload = await request<{ judge: Judge }>("/api/admin/judges", {
+    method: "POST",
+    body: JSON.stringify({ name })
+  });
+  return payload.judge;
+}
+
+export async function removeJudge(judgeId: string): Promise<void> {
+  await request<void>(`/api/admin/judges/${encodeURIComponent(judgeId)}`, {
+    method: "DELETE",
+    allowEmpty: true
+  });
 }
 
 export async function getSheetRecords(): Promise<SheetRecord[]> {

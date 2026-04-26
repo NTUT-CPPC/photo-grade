@@ -76,3 +76,9 @@ export type ImportProgress = {
   message?: string;
   status?: "idle" | "running" | "complete" | "error";
 };
+
+export type Judge = {
+  id: string;
+  name: string;
+  sortOrder: number;
+};

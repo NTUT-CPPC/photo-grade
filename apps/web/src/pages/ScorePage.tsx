@@ -1,29 +1,14 @@
 import { Send, Check } from "lucide-react";
-import { useMemo, useState } from "react";
-import { submitScore } from "../api/client";
+import { useEffect, useMemo, useState } from "react";
+import { getJudges, submitScore } from "../api/client";
 import { emitScore } from "../api/socket";
 import { TwoPaneShell } from "../components/TwoPaneShell";
 import { modeLabel, useGallery } from "../state/gallery";
 import type { Mode } from "../types";
 
-const JUDGES = ["何老師", "鄧老師", "SHA老師"];
 const FINAL_STEPS = ["美感", "故事", "創意"] as const;
-
-const NAME_MAP: Record<string, string> = {
-  初評: "何老師",
-  複評一: "何老師",
-  複評二: "鄧老師",
-  複評三: "SHA老師",
-  決評美感一: "何老師",
-  決評美感二: "鄧老師",
-  決評美感三: "SHA老師",
-  決評故事一: "何老師",
-  決評故事二: "鄧老師",
-  決評故事三: "SHA老師",
-  決評創意一: "何老師",
-  決評創意二: "鄧老師",
-  決評創意三: "SHA老師"
-};
+const JUDGE_SUFFIXES = ["一", "二", "三"] as const;
+const DEFAULT_JUDGE_LABELS = ["評審一", "評審二", "評審三"];
 
 export function ScorePage() {
   const gallery = useGallery("score");
@@ -31,7 +16,25 @@ export function ScorePage() {
   const [step, setStep] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
-  const fields = useMemo(() => scoreFields(gallery.mode, step), [gallery.mode, step]);
+  const [judgeLabels, setJudgeLabels] = useState<string[]>(DEFAULT_JUDGE_LABELS);
+  const fields = useMemo(() => scoreFields(gallery.mode, step, judgeLabels), [gallery.mode, step, judgeLabels]);
+
+  useEffect(() => {
+    let live = true;
+    getJudges()
+      .then((judges) => {
+        if (!live || !judges.length) return;
+        const next = [...DEFAULT_JUDGE_LABELS];
+        judges.slice(0, 3).forEach((judge, index) => {
+          next[index] = judge.name;
+        });
+        setJudgeLabels(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
 
   function resetForNavigation(next: () => void) {
     setStep(0);
@@ -44,7 +47,7 @@ export function ScorePage() {
     const scores = Object.fromEntries(fields.map((field) => [field.key, values[field.key]]));
     await submitScore({ base: item.base, scores, mode: gallery.mode });
     const summary = Object.entries(scores)
-      .map(([field, value]) => `${NAME_MAP[field] ?? field} ${value} 分`)
+      .map(([field, value]) => `${judgeNameForField(field, judgeLabels)} ${value} 分`)
       .join(", ");
     emitScore({ base: item.base, mode: gallery.mode, scores, summary, at: new Date().toISOString() });
     setSubmitted(true);
@@ -126,23 +129,31 @@ type Field = {
   options: number[];
 };
 
-function scoreFields(mode: Mode, step: number): Field[] {
+function scoreFields(mode: Mode, step: number, judges: string[]): Field[] {
   if (mode === "initial") {
     return [{ key: "初評", label: "", options: [0, 1, 2, 3] }];
   }
 
   if (mode === "secondary") {
-    return ["複評一", "複評二", "複評三"].map((key, index) => ({
-      key,
-      label: JUDGES[index],
+    return JUDGE_SUFFIXES.map((suffix, index) => ({
+      key: `複評${suffix}`,
+      label: judges[index] ?? DEFAULT_JUDGE_LABELS[index],
       options: [3, 4, 5]
     }));
   }
 
   const prefix = `決評${FINAL_STEPS[step]}`;
-  return ["一", "二", "三"].map((suffix, index) => ({
+  return JUDGE_SUFFIXES.map((suffix, index) => ({
     key: `${prefix}${suffix}`,
-    label: JUDGES[index],
+    label: judges[index] ?? DEFAULT_JUDGE_LABELS[index],
     options: [3, 4, 5]
   }));
+}
+
+function judgeNameForField(field: string, judges: string[]): string {
+  if (field === "初評") return judges[0] ?? DEFAULT_JUDGE_LABELS[0];
+  const suffix = field.slice(-1);
+  const index = JUDGE_SUFFIXES.indexOf(suffix as (typeof JUDGE_SUFFIXES)[number]);
+  if (index >= 0) return judges[index] ?? DEFAULT_JUDGE_LABELS[index];
+  return field;
 }

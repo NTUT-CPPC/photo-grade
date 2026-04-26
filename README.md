@@ -151,3 +151,9 @@ docker compose up --build
 - Admin 匯入 sample CSV 後，`data/originals`、`data/previews`、`data/thumbnails`、`data/metadata` 會產生檔案。
 - Host 切換作品後 Score/View 同步。
 - Score 送出後 Host 顯示即時送分提示。
+
+## Admin 內建工具
+
+- 評審設定：可在 Admin 頁面新增或刪除評審名字。Score 頁面會使用前 3 位評審名稱顯示欄位。
+- 匯入範本下載：Admin 頁面可直接下載 CSV 與 Excel 範本，再填入投稿資料後做 dry-run/confirm。
+- 按鈕提示：`Dry run` 和 `Confirm` 按鈕有 tooltip 說明操作差異。

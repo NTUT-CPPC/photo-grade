@@ -66,6 +66,12 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 新增 runtime 設定 `PUBLIC_ENTRY_URL` 與 `/api/runtime-config`，讓入口網址可由 `.env` 控制。
 - [x] Top nav 改為頁面內佔位，不再固定懸浮遮擋主畫面。
 - [x] Top nav 重新設計為極簡單按鈕（`Login/Menu`）+ dropdown，縮小常駐佔用空間。
+- [x] Admin 頁面新增評審名單管理（新增/刪除評審名字）。
+- [x] Admin 頁面新增匯入範本下載（CSV/XLSX）。
+- [x] Dry run / Confirm 按鈕補上 tooltip 說明。
+- [x] Score 頁面改為從後端評審名單載入前三位顯示名稱。
+- [x] 後端新增 `/api/judges` 與 admin judges CRUD API。
+- [x] 後端新增 `/api/admin/import/template.csv`、`/api/admin/import/template.xlsx`。
 - [x] Commit history 已建立：
   - `7b2017e chore: scaffold docker node judging app`
   - `0188caf feat: integrate import media scoring frontend`
@@ -74,6 +80,8 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
   - `5b3ec4c docs: add agent progress ledger`
   - `aa4f4f1 fix: include workspace dependencies in docker image`
   - `5bd1270 feat: add configurable entry url and host QR nav`
+  - `8714c2c refactor: redesign compact top nav dropdown`
+  - `065c8ce feat: add judge admin api and import template downloads`
 
 ### In Progress / Next
 
@@ -86,6 +94,8 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 確認 host state API 可寫入並廣播目前作品狀態。
 - [x] 確認 score 送分後 host 顯示分數，DB 有分數，Socket.IO 有廣播，Sheet sync disabled 狀態合理。
 - [x] 驗證 `PUBLIC_ENTRY_URL` 可由 `/api/runtime-config` 讀取並反映在 Host QR 入口連結。
+- [x] 驗證 judges API 可新增/刪除評審，且列表順序可用。
+- [x] 驗證 Admin UI 有評審管理區、範本下載按鈕與 dry-run/confirm tooltip。
 - [ ] Fine tuning：補更完整的 admin import history / sheet sync retry UI。
 - [ ] Fine tuning：針對多作品資料做更完整的 host 切換與 score/view 同步瀏覽器測試。
 - [ ] Fine tuning：補 mobile screenshot 檢查與 UI 細節修整。

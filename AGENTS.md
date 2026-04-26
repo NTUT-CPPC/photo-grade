@@ -79,6 +79,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 匯入格式新增可空白 `編號` 欄位；空白時用資料列順序自動編號。
 - [x] 匯入作品代碼固定加 `a/b` 後綴：單張也會是 `123a`，兩張為 `123a`、`123b`。
 - [x] AGENTS 補上「完成後測試與檢查策略」與「當前環境容器重啟套用變更」操作指引。
+- [x] Desktop 左右分割版面下，`exif-table` 預設貼資訊欄底；`photo-details` 太多時改回正常文流並隨 `info-scroll` 捲動。
 - [x] Commit history 已建立：
   - `7b2017e chore: scaffold docker node judging app`
   - `0188caf feat: integrate import media scoring frontend`

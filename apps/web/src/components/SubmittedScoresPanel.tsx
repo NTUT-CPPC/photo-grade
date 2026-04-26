@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { getJudges } from "../api/client";
+import { useState } from "react";
+import { useJudges } from "../state/judges";
 import { summarizeForMode, useWorkScores, type CompactSummary } from "../state/work-scores";
-import type { Judge, Mode } from "../types";
+import type { Mode } from "../types";
 import { ScoreDetailDialog } from "./ScoreDetailDialog";
 
 type Props = {
@@ -11,22 +11,8 @@ type Props = {
 
 export function SubmittedScoresPanel({ base, mode }: Props) {
   const { rows } = useWorkScores(base);
-  const [judges, setJudges] = useState<Judge[] | null>(null);
+  const judges = useJudges();
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    let live = true;
-    getJudges()
-      .then((list) => {
-        if (live) setJudges(list);
-      })
-      .catch(() => {
-        if (live) setJudges([]);
-      });
-    return () => {
-      live = false;
-    };
-  }, []);
 
   const summary = summarizeForMode(rows, mode);
   const empty = summary.kind === "empty";
@@ -74,7 +60,7 @@ function renderSummary(summary: Exclude<CompactSummary, { kind: "empty" }>) {
         <span className="submitted-scores__label">{summary.modeLabel}</span>
         <span className="submitted-scores__value">
           {summary.values.map((value, idx) => (
-            <span key={idx}>
+            <span key={`${summary.modeLabel}-${idx}-${value}`}>
               {value}
               {idx < summary.values.length - 1 ? <span className="submitted-scores__sep">/</span> : null}
             </span>

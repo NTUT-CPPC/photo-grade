@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { scoreLabel, modeLabel } from "@photo-grade/shared";
-import { getJudges } from "../api/client";
 import { onScoreNotification } from "../api/socket";
+import { useJudges } from "../state/judges";
 import { judgeIndexForField } from "../state/work-scores";
 import type { Judge, Mode, ScoreNotification } from "../types";
 
@@ -34,26 +34,12 @@ const HOLD_MS = 2000;
 export function ScoreSubmissionFlash({ base }: Props) {
   const [flash, setFlash] = useState<Flash | null>(null);
   const [visible, setVisible] = useState(false);
-  const [judges, setJudges] = useState<Judge[] | null>(null);
+  const judges = useJudges();
   const hideTimer = useRef<number | null>(null);
   const removeTimer = useRef<number | null>(null);
 
   useEffect(() => {
-    let live = true;
-    getJudges()
-      .then((list) => {
-        if (live) setJudges(list);
-      })
-      .catch(() => {
-        if (live) setJudges([]);
-      });
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!base) return;
+    if (!base || judges === null) return;
     return onScoreNotification((notification: FlashPayload) => {
       const matches = notification.workCode === base || notification.base === base;
       if (!matches) return;

@@ -24,15 +24,31 @@ describe("shared rules", () => {
 
   it("normalizes legacy form headers", () => {
     const dryRun = normalizeRows([{ "作品1 名稱": "A", "作品1 檔案": "https://example.com/a.jpg", "作品1 創作理念": "D", "別稱": "Author" }]);
-    expect(dryRun.works[0].code).toBe("1-a");
+    expect(dryRun.works[0].code).toBe("1a");
     expect(dryRun.works[0].author).toBe("Author");
   });
 
+  it("uses optional submission numbers with a/b suffixes for legacy rows", () => {
+    const dryRun = normalizeRows([
+      {
+        編號: "123",
+        "作品1 名稱": "A",
+        "作品1 檔案": "https://example.com/a.jpg",
+        "作品1 創作理念": "D",
+        "作品2 名稱": "B",
+        "作品2 檔案": "https://example.com/b.jpg",
+        "作品2 創作理念": "E"
+      },
+      { 編號: "", "作品1 名稱": "C", "作品1 檔案": "https://example.com/c.jpg", "作品1 創作理念": "F" }
+    ]);
+    expect(dryRun.works.map((work) => work.code)).toEqual(["123a", "123b", "2a"]);
+  });
+
   it("accepts aliased direct import headers", () => {
-    const issues = validateHeaders(["asset_id", "image_url", "title"]);
+    const issues = validateHeaders(["編號", "image_url", "title"]);
     const dryRun = normalizeRows([{ asset_id: "A 1", image_url: "https://example.com/a.jpg", title: "Direct" }]);
     expect(issues).toHaveLength(0);
-    expect(dryRun.works[0].code).toBe("A-1");
+    expect(dryRun.works[0].code).toBe("A-1a");
     expect(dryRun.works[0].sourceUrl).toBe("https://example.com/a.jpg");
   });
 

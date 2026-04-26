@@ -1,7 +1,7 @@
 import type { ImportDryRun, ImportIssue, NormalizedWorkInput } from "./types.js";
 
 export const HEADER_ALIASES: Record<string, string[]> = {
-  code: ["作品編號", "作品编号", "編號", "编号", "ID", "id", "asset id", "asset_id", "entry id", "entry_id", "submission id", "submission_id"],
+  code: ["編號", "编号", "投稿編號", "投稿编号", "作品編號", "作品编号", "ID", "id", "asset id", "asset_id", "entry id", "entry_id", "submission id", "submission_id"],
   title: ["作品名稱", "作品名称", "Title", "title", "name"],
   sourceUrl: ["作品檔案", "作品档案", "作品檔案網址", "作品档案网址", "Source URL", "source_url", "source url", "file url", "file_url", "image url", "image_url", "photo url", "photo_url", "url"],
   description: ["創作理念", "创作理念", "Description", "description", "caption", "statement", "concept"],
@@ -19,7 +19,7 @@ export const HEADER_ALIASES: Record<string, string[]> = {
   work2Description: ["作品2_創作理念", "作品2 創作理念", "作品2創作理念"]
 };
 
-const DIRECT_REQUIRED_KEYS = ["code", "title", "sourceUrl"];
+const DIRECT_REQUIRED_KEYS = ["title", "sourceUrl"];
 const LEGACY_REQUIRED_KEYS = ["work1Title", "work1File"];
 
 function valueFor(row: Record<string, unknown>, key: string): string {
@@ -56,6 +56,7 @@ export function normalizeRows(rows: Record<string, unknown>[]): ImportDryRun {
   rows.forEach((row, idx) => {
     const rowNumber = idx + 2;
     const directSourceUrl = valueFor(row, "sourceUrl");
+    const submissionCode = safeCode(valueFor(row, "code") || String(idx + 1));
     const base = {
       author: valueFor(row, "author"),
       school: valueFor(row, "school"),
@@ -65,7 +66,7 @@ export function normalizeRows(rows: Record<string, unknown>[]): ImportDryRun {
     };
 
     if (directSourceUrl) {
-      const code = safeCode(valueFor(row, "code") || String(idx + 1));
+      const code = workCode(submissionCode, "a");
       const title = valueFor(row, "title");
       const description = valueFor(row, "description");
       validateWork(rowNumber, code, title, directSourceUrl, seen, issues);
@@ -78,7 +79,7 @@ export function normalizeRows(rows: Record<string, unknown>[]): ImportDryRun {
       const sourceUrl = valueFor(row, `work${suffix}File`);
       const description = valueFor(row, `work${suffix}Description`);
       if (!sourceUrl && suffix === "2") continue;
-      const code = `${idx + 1}-${postfix}`;
+      const code = workCode(submissionCode, postfix);
       validateWork(rowNumber, code, title, sourceUrl, seen, issues);
       if (!title || !sourceUrl) continue;
       works.push({ code, title, description, sourceUrl, ...base });
@@ -130,6 +131,10 @@ function safeCode(input: string): string {
     .replace(/[^0-9A-Za-z._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 120);
+}
+
+function workCode(submissionCode: string, postfix: "a" | "b"): string {
+  return `${submissionCode}${postfix}`;
 }
 
 function validateWork(row: number, code: string, title: string, sourceUrl: string, seen: Set<string>, issues: ImportIssue[]): void {

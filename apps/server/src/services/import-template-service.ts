@@ -1,6 +1,7 @@
 import { utils as xlsxUtils, write as xlsxWrite } from "xlsx";
 
 const TEMPLATE_HEADERS = [
+  "編號",
   "電子郵件地址",
   "學校",
   "系級",
@@ -15,6 +16,7 @@ const TEMPLATE_HEADERS = [
 ] as const;
 
 const TEMPLATE_SAMPLE_ROW = [
+  "123",
   "name@example.com",
   "示範大學",
   "視覺傳達設計系",

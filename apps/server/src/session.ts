@@ -26,6 +26,7 @@ declare module "express-session" {
 const noop: RequestHandler = (_req, _res, next) => next();
 
 let cached: RequestHandler | null = null;
+let redisClient: Redis | null = null;
 
 export function sessionMiddleware(): RequestHandler {
   if (cached) return cached;
@@ -34,8 +35,8 @@ export function sessionMiddleware(): RequestHandler {
     return cached;
   }
 
-  const client = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
-  const store = new RedisStore({ client, prefix: "pg:sess:" });
+  redisClient = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null });
+  const store = new RedisStore({ client: redisClient, prefix: "pg:sess:" });
   const secure = env.COOKIE_SECURE === "true" || (env.COOKIE_SECURE === "auto" && env.NODE_ENV === "production");
 
   cached = session({
@@ -52,4 +53,15 @@ export function sessionMiddleware(): RequestHandler {
     }
   });
   return cached;
+}
+
+export async function closeSession(): Promise<void> {
+  if (!redisClient) return;
+  try {
+    await redisClient.quit();
+  } catch {
+    redisClient.disconnect();
+  } finally {
+    redisClient = null;
+  }
 }

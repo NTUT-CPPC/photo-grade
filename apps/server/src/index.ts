@@ -7,7 +7,7 @@ import express from "express";
 import multer from "multer";
 import { env } from "./env.js";
 import { requireAuth } from "./auth.js";
-import { sessionMiddleware } from "./session.js";
+import { closeSession, sessionMiddleware } from "./session.js";
 import { enqueueImport } from "./queue.js";
 import { attachRealtime } from "./realtime.js";
 import { authRoutes } from "./routes/auth-routes.js";
@@ -226,6 +226,18 @@ attachRealtime(server);
 server.listen(env.PORT, () => {
   console.log(`photo-grade server listening on ${env.PORT}`);
 });
+
+let shuttingDown = false;
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}, shutting down...`);
+  server.close();
+  await Promise.allSettled([closeSession(), prisma.$disconnect()]);
+  process.exit(0);
+}
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
 
 function staticWeb() {
   const dist = path.resolve(repoRoot, "apps/web/dist");

@@ -1,8 +1,10 @@
-import type { Server as HttpServer } from "node:http";
+import type { Server as HttpServer, IncomingMessage } from "node:http";
+import type { Socket } from "socket.io";
 import { Server } from "socket.io";
 import type { ScoreChangedPayload } from "@photo-grade/shared";
 import { env } from "./env.js";
 import { isAuthorizedBasicHeader } from "./auth.js";
+import { sessionMiddleware } from "./session.js";
 import { getPresentationState, setPresentationState, type PresentationPatch } from "./services/presentation-service.js";
 import { normalizeScoreRequest } from "./services/score-request.js";
 import { submitScores } from "./services/score-service.js";
@@ -15,6 +17,13 @@ export function attachRealtime(server: HttpServer): Server {
       ? { origin: env.SOCKET_CORS_ORIGIN, credentials: true }
       : { origin: true, credentials: true }
   });
+
+  if (env.AUTH_MODE === "oidc") {
+    const middleware = sessionMiddleware();
+    io.engine.use((req: IncomingMessage, res: unknown, next: (err?: unknown) => void) => {
+      middleware(req as never, res as never, next as never);
+    });
+  }
 
   io.on("connection", async (socket) => {
     socket.emit("state:changed", await getPresentationState());
@@ -78,7 +87,12 @@ export function attachRealtime(server: HttpServer): Server {
   return io;
 }
 
-function assertSocketAuthenticated(socket: { handshake: { headers: { authorization?: string } } }): void {
+function assertSocketAuthenticated(socket: Socket): void {
+  if (env.AUTH_MODE === "oidc") {
+    const session = (socket.request as { session?: { user?: unknown } }).session;
+    if (session?.user) return;
+    throw new Error("Unauthorized socket event.");
+  }
   if (isAuthorizedBasicHeader(socket.handshake.headers.authorization)) return;
   throw new Error("Unauthorized socket event.");
 }

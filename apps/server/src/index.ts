@@ -7,8 +7,10 @@ import express from "express";
 import multer from "multer";
 import { env } from "./env.js";
 import { requireAuth } from "./auth.js";
+import { sessionMiddleware } from "./session.js";
 import { enqueueImport } from "./queue.js";
 import { attachRealtime } from "./realtime.js";
+import { authRoutes } from "./routes/auth-routes.js";
 import { scoreRoutes } from "./routes/score-routes.js";
 import { stateRoutes } from "./routes/state-routes.js";
 import { prisma } from "./prisma.js";
@@ -29,14 +31,18 @@ const upload = multer({
   limits: { fileSize: env.MAX_IMPORT_FILE_MB * 1024 * 1024 }
 });
 
+app.set("trust proxy", 1);
 app.use(cors());
 app.use(express.json({ limit: "5mb" }));
+app.use(sessionMiddleware());
+app.use(authRoutes);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.get("/api/runtime-config", (_req, res) =>
   res.json({
-    entryBaseUrl: normalizeBaseUrl(env.PUBLIC_ENTRY_URL || env.APP_BASE_URL || `http://localhost:${env.PORT}`)
+    entryBaseUrl: normalizeBaseUrl(env.PUBLIC_ENTRY_URL || env.APP_BASE_URL || `http://localhost:${env.PORT}`),
+    authMode: env.AUTH_MODE
   })
 );
 

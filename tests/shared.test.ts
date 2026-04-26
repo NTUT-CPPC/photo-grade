@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractGoogleDriveFileId, normalizeRows, validateHeaders, validateScore } from "../packages/shared/src/index.js";
+import { extractGoogleDriveFileId, fieldsForMode, normalizeRows, validateHeaders, validateScore } from "../packages/shared/src/index.js";
 import { assertInsideDataDir } from "../apps/server/src/storage.js";
 
 describe("shared rules", () => {
@@ -12,7 +12,14 @@ describe("shared rules", () => {
     expect(validateScore("初評", 0)).toBe(true);
     expect(validateScore("初評", 4)).toBe(false);
     expect(validateScore("複評一", 5)).toBe(true);
+    expect(validateScore("複評4", 5)).toBe(true);
+    expect(validateScore("決評故事5", 3)).toBe(true);
     expect(validateScore("決評美感三", 2)).toBe(false);
+  });
+
+  it("generates score fields for more than three judges", () => {
+    expect(fieldsForMode("secondary", undefined, 5)).toEqual(["複評一", "複評二", "複評三", "複評4", "複評5"]);
+    expect(fieldsForMode("final", "creativity", 4)).toEqual(["決評創意一", "決評創意二", "決評創意三", "決評創意4"]);
   });
 
   it("normalizes legacy form headers", () => {

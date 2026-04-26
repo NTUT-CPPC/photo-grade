@@ -53,6 +53,13 @@ export type ScoreNotification = {
   at?: string;
 };
 
+export type WorkScoreRow = {
+  round: Mode;
+  field: string;
+  value: number;
+  judgeId: string;
+};
+
 export type ImportDryRunResult = {
   importId?: string;
   id?: string;

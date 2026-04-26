@@ -5,7 +5,8 @@ import type {
   Mode,
   PhotoItem,
   ScorePayload,
-  SheetRecord
+  SheetRecord,
+  WorkScoreRow
 } from "../types";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
@@ -155,6 +156,24 @@ export async function getScore(base: string): Promise<string | null> {
     `/get_score/${encodeURIComponent(base)}`
   ]);
   return data.score == null ? null : String(data.score);
+}
+
+export async function getScoresForWork(base: string): Promise<WorkScoreRow[]> {
+  const data = await firstOk<{ scores?: Array<Partial<WorkScoreRow>> }>([
+    `/api/scores/${encodeURIComponent(base)}`,
+    `/get_score/${encodeURIComponent(base)}`
+  ]);
+  if (!Array.isArray(data.scores)) return [];
+  return data.scores
+    .filter((row): row is WorkScoreRow => {
+      return (
+        typeof row?.field === "string" &&
+        typeof row?.value === "number" &&
+        (row?.round === "initial" || row?.round === "secondary" || row?.round === "final") &&
+        typeof row?.judgeId === "string"
+      );
+    })
+    .map((row) => ({ round: row.round, field: row.field, value: row.value, judgeId: row.judgeId }));
 }
 
 export async function submitScore(payload: ScorePayload): Promise<void> {

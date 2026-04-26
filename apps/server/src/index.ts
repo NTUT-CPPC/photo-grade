@@ -14,7 +14,7 @@ import { stateRoutes } from "./routes/state-routes.js";
 import { prisma } from "./prisma.js";
 import { createImportBatch } from "./services/import-service.js";
 import { importTemplateCsvBuffer, importTemplateXlsxBuffer } from "./services/import-template-service.js";
-import { addJudge, deleteJudge, listJudges } from "./services/judge-service.js";
+import { addJudge, deleteJudge, listJudges, replaceJudges } from "./services/judge-service.js";
 import { listWorks, metadataForWork } from "./services/work-service.js";
 import { processSheetSync } from "./services/sheet-service.js";
 import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
@@ -102,6 +102,14 @@ app.get("/api/admin/judges", basicAuth("admin"), async (_req, res, next) => {
 app.post("/api/admin/judges", basicAuth("admin"), async (req, res, next) => {
   try {
     res.status(201).json({ judge: await addJudge(firstString(req.body?.name) ?? "") });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/admin/judges", basicAuth("admin"), async (req, res, next) => {
+  try {
+    res.json({ judges: await replaceJudges(req.body?.judges ?? []) });
   } catch (error) {
     next(error);
   }

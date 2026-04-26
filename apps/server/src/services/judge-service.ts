@@ -8,6 +8,11 @@ export type JudgeDto = {
   sortOrder: number;
 };
 
+export type JudgeUpdateInput = {
+  id?: string;
+  name: string;
+};
+
 export async function listJudges(): Promise<JudgeDto[]> {
   await ensureDefaultJudges();
   const judges = await prisma.judge.findMany({ orderBy: { sortOrder: "asc" } });
@@ -26,6 +31,30 @@ export async function deleteJudge(id: string): Promise<void> {
   const judgeId = id.trim();
   if (!judgeId) throw new Error("judge id is required.");
   await prisma.judge.delete({ where: { id: judgeId } });
+}
+
+export async function replaceJudges(inputs: JudgeUpdateInput[]): Promise<JudgeDto[]> {
+  if (!Array.isArray(inputs)) throw new Error("judges must be an array.");
+  const normalized = inputs.map((input) => ({ id: input.id?.trim(), name: normalizeJudgeName(input.name) }));
+  if (!normalized.length) throw new Error("at least one judge is required.");
+
+  await prisma.$transaction(async (tx) => {
+    const keepIds = normalized.map((judge) => judge.id).filter((id): id is string => Boolean(id));
+    await tx.judge.deleteMany({ where: keepIds.length ? { id: { notIn: keepIds } } : {} });
+
+    for (const [index, judge] of normalized.entries()) {
+      if (judge.id) {
+        await tx.judge.update({
+          where: { id: judge.id },
+          data: { name: judge.name, sortOrder: index }
+        });
+      } else {
+        await tx.judge.create({ data: { name: judge.name, sortOrder: index } });
+      }
+    }
+  });
+
+  return listJudges();
 }
 
 async function ensureDefaultJudges(): Promise<void> {

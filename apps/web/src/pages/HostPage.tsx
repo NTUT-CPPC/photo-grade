@@ -1,4 +1,5 @@
 import { ExifTable } from "../components/ExifTable";
+import { ScoreSubmissionFlash } from "../components/ScoreSubmissionFlash";
 import { SubmittedScoresPanel } from "../components/SubmittedScoresPanel";
 import { TwoPaneShell } from "../components/TwoPaneShell";
 import { modeLabel, useGallery } from "../state/gallery";
@@ -11,20 +12,23 @@ export function HostPage() {
   const item = gallery.current;
 
   return (
-    <TwoPaneShell
-      item={item}
-      canPrev={gallery.idx > 0}
-      canNext={gallery.idx < gallery.items.length - 1}
-      onPrev={() => void gallery.navigate(gallery.idx - 1)}
-      onNext={() => void gallery.navigate(gallery.idx + 1)}
-      onJump={gallery.jumpTo}
-    >
-      <ModePicker value={gallery.mode} onChange={(mode) => void gallery.changeMode(mode)} />
-      <PhotoDetails item={item} mode={gallery.mode} position={gallery.idx + 1} total={gallery.items.length} />
-      <SubmittedScoresPanel base={item?.base} mode={gallery.mode} />
-      <ExifTable info={itemInfo(item)} />
-      <Status loading={gallery.loading} error={gallery.error} />
-    </TwoPaneShell>
+    <>
+      <TwoPaneShell
+        item={item}
+        canPrev={gallery.idx > 0}
+        canNext={gallery.idx < gallery.items.length - 1}
+        onPrev={() => void gallery.navigate(gallery.idx - 1)}
+        onNext={() => void gallery.navigate(gallery.idx + 1)}
+        onJump={gallery.jumpTo}
+      >
+        <ModePicker value={gallery.mode} onChange={(mode) => void gallery.changeMode(mode)} />
+        <PhotoDetails item={item} mode={gallery.mode} position={gallery.idx + 1} total={gallery.items.length} />
+        <SubmittedScoresPanel base={item?.base} mode={gallery.mode} />
+        <ExifTable info={itemInfo(item)} />
+        <Status loading={gallery.loading} error={gallery.error} />
+      </TwoPaneShell>
+      <ScoreSubmissionFlash base={item?.base} />
+    </>
   );
 }
 

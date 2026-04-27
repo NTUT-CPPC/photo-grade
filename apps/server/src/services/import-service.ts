@@ -5,7 +5,8 @@ import readXlsxFile from "read-excel-file/node";
 import type { Prisma } from "@prisma/client";
 import { normalizeRows, validateHeaders, type ImportDryRun } from "@photo-grade/shared";
 import { prisma } from "../prisma.js";
-import { assertInsideDataDir, dataDirs, safeFileName } from "../storage.js";
+import { queue } from "../queue.js";
+import { assertInsideDataDir, dataDirs, safeFileName, wipeDirContents } from "../storage.js";
 
 export async function dryRunImport(filePath: string): Promise<ImportDryRun> {
   const rows = await readRows(filePath);
@@ -42,6 +43,11 @@ export async function processImportBatch(
   const total = dryRun.works.length;
   console.log(`[import] batchId=${batchId} total=${total} fileName=${batch.fileName}`);
 
+  if (batch.status === "CANCELLED") {
+    console.log(`[import] batchId=${batchId} already cancelled before start, skipping`);
+    return;
+  }
+
   await prisma.importBatch.update({
     where: { id: batchId },
     data: { status: "PROCESSING", error: null, processedCount: 0, totalCount: total }
@@ -59,6 +65,15 @@ export async function processImportBatch(
   const { processMediaForWork } = await import("./media-service.js");
   let processed = 0;
   for (const work of dryRun.works) {
+    const current = await prisma.importBatch.findUniqueOrThrow({
+      where: { id: batchId },
+      select: { status: true }
+    });
+    if (current.status === "CANCELLED") {
+      console.log(`[import] batchId=${batchId} cancelled at ${processed}/${total}, exiting`);
+      return;
+    }
+
     console.log(`[import] (${processed + 1}/${total}) work.code=${work.code} title=${work.title}`);
     await onProgress?.(`Processing ${work.code}`, processed);
     try {
@@ -99,6 +114,51 @@ export async function processImportBatch(
 
   await prisma.importBatch.update({ where: { id: batchId }, data: { status: "COMPLETED", processedCount: processed } });
   console.log(`[import] done batchId=${batchId} processed=${processed}/${total}`);
+}
+
+export async function cancelImportBatch(batchId: string): Promise<void> {
+  console.log(`[import] cancel batchId=${batchId}`);
+  await prisma.importBatch.updateMany({
+    where: { id: batchId, status: { in: ["DRY_RUN", "QUEUED", "PROCESSING"] } },
+    data: { status: "CANCELLED" }
+  });
+  const jobs = await queue.getJobs(["wait", "delayed", "active"], 0, 200);
+  for (const job of jobs) {
+    if (job.data?.batchId === batchId) {
+      try {
+        await job.remove();
+        console.log(`[import] removed BullMQ job id=${job.id} for batchId=${batchId}`);
+      } catch (err) {
+        console.warn(`[import] could not remove BullMQ job id=${job.id} (active?):`, (err as Error).message);
+      }
+    }
+  }
+}
+
+export async function cancelActiveImports(exceptBatchId?: string): Promise<void> {
+  const active = await prisma.importBatch.findMany({
+    where: {
+      status: { in: ["QUEUED", "PROCESSING"] },
+      ...(exceptBatchId ? { NOT: { id: exceptBatchId } } : {})
+    },
+    select: { id: true }
+  });
+  for (const batch of active) {
+    await cancelImportBatch(batch.id);
+  }
+}
+
+export async function wipeAllImportData(): Promise<void> {
+  console.log(`[import] wipe — deleting works/assets/scores/outbox + media files`);
+  await prisma.presentationState.updateMany({ data: { workId: null, idx: 0 } });
+  await prisma.work.deleteMany({});
+  await Promise.all([
+    wipeDirContents(dataDirs.originals),
+    wipeDirContents(dataDirs.previews),
+    wipeDirContents(dataDirs.thumbnails),
+    wipeDirContents(dataDirs.metadata)
+  ]);
+  console.log(`[import] wipe done`);
 }
 
 async function readRows(filePath: string): Promise<Record<string, unknown>[]> {

@@ -34,3 +34,18 @@ export function safeFileName(input: string): string {
 export function publicAssetUrl(kind: "originals" | "previews" | "thumbnails", filename: string): string {
   return `/media/${kind}/${encodeURIComponent(filename)}`;
 }
+
+export async function wipeDirContents(dir: string): Promise<void> {
+  const safeDir = assertInsideDataDir(dir);
+  let entries: string[];
+  try {
+    entries = await fs.readdir(safeDir);
+  } catch {
+    return;
+  }
+  await Promise.all(
+    entries.map((name) =>
+      fs.rm(assertInsideDataDir(path.join(safeDir, name)), { recursive: true, force: true })
+    )
+  );
+}

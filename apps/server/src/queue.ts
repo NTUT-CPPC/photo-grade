@@ -13,7 +13,7 @@ export async function enqueueImport(batchId: string): Promise<void> {
   const job = await queue.add(
     "import",
     { batchId },
-    { jobId: `import-${batchId}`, attempts: 2, backoff: { type: "exponential", delay: 5000 } }
+    { attempts: 2, backoff: { type: "exponential", delay: 5000 } }
   );
   console.log(`[queue] import job added id=${job.id} name=${job.name}`);
 }

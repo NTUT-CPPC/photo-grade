@@ -81,11 +81,11 @@ export type ImportProgress = {
   done?: number;
   total?: number;
   message?: string;
-  status?: "idle" | "running" | "complete" | "error";
+  status?: "idle" | "running" | "complete" | "error" | "cancelled";
   workerOnline?: boolean;
 };
 
-export type ImportBatchStatus = "DRY_RUN" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
+export type ImportBatchStatus = "DRY_RUN" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED";
 
 export type ActiveImportBatch = {
   id: string;

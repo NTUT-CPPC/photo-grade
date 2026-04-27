@@ -14,7 +14,12 @@ import { authRoutes } from "./routes/auth-routes.js";
 import { scoreRoutes } from "./routes/score-routes.js";
 import { stateRoutes } from "./routes/state-routes.js";
 import { prisma } from "./prisma.js";
-import { createImportBatch } from "./services/import-service.js";
+import {
+  cancelActiveImports,
+  cancelImportBatch,
+  createImportBatch,
+  wipeAllImportData
+} from "./services/import-service.js";
 import { importTemplateCsvBuffer, importTemplateXlsxBuffer } from "./services/import-template-service.js";
 import { addJudge, deleteJudge, listJudges, replaceJudges } from "./services/judge-service.js";
 import { listWorks, metadataForWork } from "./services/work-service.js";
@@ -164,10 +169,12 @@ app.post(["/api/admin/import/confirm", "/api/admin/imports/:id/confirm"], requir
     const importId = firstString(req.params.id) ?? firstString(req.body?.importId) ?? firstString(req.body?.id);
     if (!importId) throw new Error("importId is required.");
     console.log(`[admin] confirm import importId=${importId}`);
+    await cancelActiveImports();
+    await wipeAllImportData();
     await enqueueImport(importId);
     await prisma.importBatch.update({
       where: { id: importId },
-      data: { status: "QUEUED", error: null, processedCount: 0 }
+      data: { status: "QUEUED", error: null, processedCount: 0, totalCount: 0 }
     });
     let workerOnline: boolean | undefined;
     try {
@@ -187,6 +194,18 @@ app.post(["/api/admin/import/confirm", "/api/admin/imports/:id/confirm"], requir
           : "Import queued.",
       workerOnline
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post(["/api/admin/import/cancel", "/api/admin/imports/:id/cancel"], requireAuth(), async (req, res, next) => {
+  try {
+    const importId = firstString(req.params.id) ?? firstString(req.body?.importId) ?? firstString(req.body?.id);
+    if (!importId) throw new Error("importId is required.");
+    console.log(`[admin] cancel import importId=${importId}`);
+    await cancelImportBatch(importId);
+    res.json({ importId, status: "cancelled" });
   } catch (error) {
     next(error);
   }
@@ -252,11 +271,21 @@ app.get(["/api/admin/import/progress/:id", "/api/admin/imports/:id"], requireAut
     const dryRun = batch.dryRunJson as { works?: unknown[] };
     const total = batch.totalCount || dryRun.works?.length || 0;
     const done =
-      batch.status === "COMPLETED" ? total : batch.status === "PROCESSING" ? batch.processedCount : 0;
+      batch.status === "COMPLETED"
+        ? total
+        : batch.status === "PROCESSING" || batch.status === "CANCELLED"
+          ? batch.processedCount
+          : 0;
     let workerOnline: boolean | undefined;
     let message = batch.error ?? `${batch.status} ${done}/${total}`;
-    let status: "complete" | "error" | "running" =
-      batch.status === "COMPLETED" ? "complete" : batch.status === "FAILED" ? "error" : "running";
+    let status: "complete" | "error" | "running" | "cancelled" =
+      batch.status === "COMPLETED"
+        ? "complete"
+        : batch.status === "FAILED"
+          ? "error"
+          : batch.status === "CANCELLED"
+            ? "cancelled"
+            : "running";
     if (batch.status === "QUEUED") {
       try {
         const workers = await queue.getWorkers();

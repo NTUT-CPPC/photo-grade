@@ -1,6 +1,7 @@
-import { Check, ChevronRight, Download, GripVertical, Plus, RotateCcw, Save, Trash2, Upload } from "lucide-react";
+import { Check, ChevronRight, Download, GripVertical, Plus, RotateCcw, Save, Trash2, Upload, X } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  cancelImport,
   confirmImport,
   dryRunImport,
   getActiveImport,
@@ -40,6 +41,7 @@ export function AdminPage() {
   const [draggingJudgeId, setDraggingJudgeId] = useState<string | null>(null);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -47,11 +49,16 @@ export function AdminPage() {
 
   const importId = dryRun?.importId ?? dryRun?.id;
   const dryRunHasErrors = Boolean(dryRun?.errors?.length);
-  const canConfirm = Boolean(importId) && !confirmBusy && !dryRunBusy && !dryRunHasErrors;
+  const canConfirm = Boolean(importId) && !confirmBusy && !dryRunBusy && !cancelBusy && !dryRunHasErrors;
   const total = dryRun?.total ?? dryRun?.items?.length ?? (file ? 1 : 0);
+  const isImportActive =
+    progress?.status === "running" ||
+    (progress?.status === "error" && progress?.workerOnline === false);
   const isImportTerminal =
-    progress?.status === "complete" ||
-    (progress?.status === "error" && progress?.workerOnline !== false);
+    Boolean(progress) &&
+    (progress?.status === "complete" ||
+      progress?.status === "cancelled" ||
+      (progress?.status === "error" && progress?.workerOnline !== false));
 
   useEffect(() => {
     return onImportProgress((next) => {
@@ -63,6 +70,7 @@ export function AdminPage() {
     if (!importId || !progress) return;
     if (progress.phase === "DRY_RUN") return;
     if (progress.status === "complete") return;
+    if (progress.status === "cancelled") return;
     if (progress.status === "error" && progress.workerOnline !== false) return;
     const timer = window.setInterval(() => {
       getImportProgress(importId)
@@ -185,6 +193,20 @@ export function AdminPage() {
         dryRunAbortRef.current = null;
         setDryRunBusy(false);
       }
+    }
+  }
+
+  async function runCancel() {
+    if (!importId) return;
+    setCancelBusy(true);
+    setError(null);
+    try {
+      await cancelImport(importId);
+      setProgress(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cancel failed");
+    } finally {
+      setCancelBusy(false);
     }
   }
 
@@ -331,52 +353,56 @@ export function AdminPage() {
 
         <section className="admin-block">
           <h2>作品匯入</h2>
-        <label
-          className={`file-drop${dragActive ? " is-drag" : ""}`}
-          onDragEnter={handleDragOver}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          <Upload size={22} />
-          <span>
-            {file
-              ? file.name
-              : activeBatch
-                ? activeBatch.fileName
-                : "選擇或拖曳 CSV / Excel 檔案 — 選完會自動 dry-run"}
-          </span>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={IMPORT_ACCEPT}
-            onChange={selectFile}
-          />
-        </label>
-        <div className="admin-actions">
-          <button
-            type="button"
-            title={
-              dryRunHasErrors
-                ? "Dry-run 有錯誤，請修正欄位後重新選檔。"
-                : "確認後才會開始背景匯入：下載作品、產生縮圖與 metadata。"
-            }
-            onClick={() => void runConfirm()}
-            disabled={!canConfirm}
-          >
-            <Check size={18} />
-            {confirmBusy ? "Queueing…" : "Confirm import"}
-          </button>
-          {isImportTerminal ? (
-            <button type="button" onClick={resetImport} title="清除目前狀態並開始新匯入。">
-              <RotateCcw size={18} />
-              Start new import
-            </button>
-          ) : null}
-        </div>
+        {isImportActive ? null : (
+          <>
+            <label
+              className={`file-drop${dragActive ? " is-drag" : ""}`}
+              onDragEnter={handleDragOver}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <Upload size={22} />
+              <span>
+                {file
+                  ? file.name
+                  : activeBatch
+                    ? activeBatch.fileName
+                    : "選擇或拖曳 CSV / Excel 檔案 — 選完會自動 dry-run"}
+              </span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={IMPORT_ACCEPT}
+                onChange={selectFile}
+              />
+            </label>
+            <div className="admin-actions">
+              <button
+                type="button"
+                title={
+                  dryRunHasErrors
+                    ? "Dry-run 有錯誤，請修正欄位後重新選檔。"
+                    : "確認後會清掉所有舊資料並重新下載匯入。"
+                }
+                onClick={() => void runConfirm()}
+                disabled={!canConfirm}
+              >
+                <Check size={18} />
+                {confirmBusy ? "Queueing…" : "Confirm import"}
+              </button>
+              {isImportTerminal ? (
+                <button type="button" onClick={resetImport} title="清除目前狀態並開始新匯入。">
+                  <RotateCcw size={18} />
+                  Start new import
+                </button>
+              ) : null}
+            </div>
+            {dryRunBusy ? <p className="system-note">Dry-run checking…</p> : null}
+            {dryRun ? <DryRunResult result={dryRun} total={total} /> : null}
+          </>
+        )}
         {error ? <p className="system-note error">{error}</p> : null}
-        {dryRunBusy ? <p className="system-note">Dry-run checking…</p> : null}
-        {dryRun ? <DryRunResult result={dryRun} total={total} /> : null}
         {progress ? (
           <div className="progress-panel">
             {activeBatch ? (
@@ -399,6 +425,19 @@ export function AdminPage() {
               <p className="system-note error">
                 Worker 容器沒在跑，匯入工作不會被處理。請執行 <code>docker compose up -d worker</code>，啟動後本頁會自動恢復。
               </p>
+            ) : null}
+            {isImportActive ? (
+              <div className="admin-actions">
+                <button
+                  type="button"
+                  onClick={() => void runCancel()}
+                  disabled={cancelBusy}
+                  title="中斷目前匯入。已下載的檔案會保留，再次按 Confirm 會清掉重新下載。"
+                >
+                  <X size={18} />
+                  {cancelBusy ? "Cancelling…" : "Cancel import"}
+                </button>
+              </div>
             ) : null}
           </div>
         ) : null}

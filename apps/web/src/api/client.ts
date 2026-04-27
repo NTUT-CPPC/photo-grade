@@ -237,6 +237,17 @@ export async function confirmImport(importId: string): Promise<ImportProgress | 
   });
 }
 
+export async function cancelImport(importId: string): Promise<void> {
+  await firstOk<void>([
+    "/api/admin/import/cancel",
+    `/api/admin/imports/${encodeURIComponent(importId)}/cancel`
+  ], {
+    method: "POST",
+    body: JSON.stringify({ importId, id: importId }),
+    allowEmpty: true
+  });
+}
+
 export async function getImportProgress(importId: string): Promise<ImportProgress> {
   return firstOk<ImportProgress>([
     `/api/admin/import/progress/${encodeURIComponent(importId)}`,

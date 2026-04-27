@@ -55,6 +55,7 @@ export function normalizeRows(rows: Record<string, unknown>[]): ImportDryRun {
 
   rows.forEach((row, idx) => {
     const rowNumber = idx + 2;
+    if (isCodeOnlyRow(row)) return;
     const directSourceUrl = valueFor(row, "sourceUrl");
     const submissionCode = safeCode(valueFor(row, "code") || String(idx + 1));
     const base = {
@@ -123,6 +124,27 @@ function normalizedRecord(row: Record<string, unknown>): Map<string, unknown> {
     normalized.set(normalizeHeader(key), value);
   }
   return normalized;
+}
+
+const ROW_CONTENT_KEYS = [
+  "title",
+  "sourceUrl",
+  "description",
+  "email",
+  "school",
+  "department",
+  "studentId",
+  "author",
+  "work1Title",
+  "work1File",
+  "work1Description",
+  "work2Title",
+  "work2File",
+  "work2Description"
+];
+
+function isCodeOnlyRow(row: Record<string, unknown>): boolean {
+  return ROW_CONTENT_KEYS.every((key) => valueFor(row, key) === "");
 }
 
 function safeCode(input: string): string {

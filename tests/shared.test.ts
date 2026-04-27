@@ -45,6 +45,17 @@ describe("shared rules", () => {
     expect(dryRun.works.map((work) => work.code)).toEqual(["123a", "123b", "2a"]);
   });
 
+  it("ignores rows that only carry an auto-numbered 編號", () => {
+    const dryRun = normalizeRows([
+      { 編號: "1", "作品1 名稱": "A", "作品1 檔案": "https://example.com/a.jpg" },
+      { 編號: "2" },
+      { 編號: "3" },
+      { 編號: "4", "作品1 名稱": "D", "作品1 檔案": "https://example.com/d.jpg" }
+    ]);
+    expect(dryRun.issues).toEqual([]);
+    expect(dryRun.works.map((work) => work.code)).toEqual(["1a", "4a"]);
+  });
+
   it("accepts aliased direct import headers", () => {
     const issues = validateHeaders(["編號", "image_url", "title"]);
     const dryRun = normalizeRows([{ asset_id: "A 1", image_url: "https://example.com/a.jpg", title: "Direct" }]);

@@ -21,16 +21,19 @@ export function PhotoPane({ item, rotation, quality = "high" }: Props) {
 
     const measure = () => {
       const rotated = Math.abs(rotation % 180) === 90;
-      const naturalWidth = image.naturalWidth || image.clientWidth || 1;
-      const naturalHeight = image.naturalHeight || image.clientHeight || 1;
-      const width = rotated ? naturalHeight : naturalWidth;
-      const height = rotated ? naturalWidth : naturalHeight;
-      setScale(Math.min(frame.clientWidth / width, frame.clientHeight / height, 1));
+      if (!rotated) {
+        setScale(1);
+        return;
+      }
+      const w = image.clientWidth || 1;
+      const h = image.clientHeight || 1;
+      setScale(Math.min(frame.clientWidth / h, frame.clientHeight / w, 1));
     };
 
     measure();
     const resize = new ResizeObserver(measure);
     resize.observe(frame);
+    resize.observe(image);
     return () => resize.disconnect();
   }, [item?.base, loadVersion, rotation]);
 

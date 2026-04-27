@@ -8,6 +8,7 @@ type Props = {
   photoQuality?: "high" | "mini";
   canPrev: boolean;
   canNext: boolean;
+  bases: string[];
   onPrev: () => void;
   onNext: () => void;
   onJump: (base: string) => void;
@@ -21,6 +22,7 @@ export function TwoPaneShell({
   photoQuality = "high",
   canPrev,
   canNext,
+  bases,
   onPrev,
   onNext,
   onJump,
@@ -90,6 +92,7 @@ export function TwoPaneShell({
         <NavControls
           canPrev={canPrev}
           canNext={canNext}
+          bases={bases}
           onPrev={onPrev}
           onNext={onNext}
           onJump={onJump}

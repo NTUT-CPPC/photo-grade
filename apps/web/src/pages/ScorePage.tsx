@@ -34,11 +34,10 @@ export function ScorePage() {
     };
   }, []);
 
-  function resetForNavigation(next: () => void) {
+  useEffect(() => {
     setStep(0);
     setValues({});
-    next();
-  }
+  }, [item?.base, gallery.mode]);
 
   async function handleSubmit() {
     if (!item || fields.some((field) => !values[field.key])) return;
@@ -110,6 +109,7 @@ export function ScorePage() {
       compactPhoto
       canPrev={gallery.idx > 0}
       canNext={gallery.idx < gallery.items.length - 1}
+      bases={gallery.items.map((item) => item.base)}
       onPrev={() => resetForNavigation(() => void gallery.navigate(gallery.idx - 1))}
       onNext={() => resetForNavigation(() => void gallery.navigate(gallery.idx + 1))}
       onJump={(base) => resetForNavigation(() => gallery.jumpTo(base))}

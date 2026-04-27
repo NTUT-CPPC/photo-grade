@@ -17,6 +17,7 @@ export function HostPage() {
         item={item}
         canPrev={gallery.idx > 0}
         canNext={gallery.idx < gallery.items.length - 1}
+        bases={gallery.items.map((item) => item.base)}
         onPrev={() => void gallery.navigate(gallery.idx - 1)}
         onNext={() => void gallery.navigate(gallery.idx + 1)}
         onJump={gallery.jumpTo}

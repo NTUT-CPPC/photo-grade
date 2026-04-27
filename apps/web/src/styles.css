@@ -644,7 +644,7 @@ button:disabled {
   border-top: 1px solid #333333;
 }
 
-.nav-controls button,
+.nav-controls > button,
 .nav-controls input,
 .admin-actions button,
 .submit-btn {
@@ -655,7 +655,7 @@ button:disabled {
   border-radius: 4px;
 }
 
-.nav-controls button {
+.nav-controls > button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -668,11 +668,55 @@ button:disabled {
   padding: 0 0.55rem;
 }
 
-.nav-controls button:hover:not(:disabled),
+.nav-controls > button:hover:not(:disabled),
 .nav-controls input:focus,
 .admin-actions button:hover:not(:disabled) {
   background: #555555;
   outline: none;
+}
+
+.nav-jump {
+  position: relative;
+  min-width: 0;
+  display: flex;
+}
+
+.nav-jump-suggestions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.4rem);
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: #1e1e1e;
+  border: 1px solid #333333;
+  border-radius: 4px;
+  max-height: 12rem;
+  overflow-y: auto;
+  z-index: 11;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.nav-jump-suggestions li {
+  margin: 0;
+}
+
+.nav-jump-suggestions button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #eeeeee;
+  padding: 0.4rem 0.6rem;
+  text-align: center;
+  cursor: pointer;
+  font: inherit;
+  border-radius: 3px;
+}
+
+.nav-jump-suggestions button.active,
+.nav-jump-suggestions button:hover {
+  background: #3a3a3a;
 }
 
 .score-panel {

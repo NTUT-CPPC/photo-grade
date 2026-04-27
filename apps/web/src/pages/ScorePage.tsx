@@ -110,9 +110,9 @@ export function ScorePage() {
       canPrev={gallery.idx > 0}
       canNext={gallery.idx < gallery.items.length - 1}
       bases={gallery.items.map((item) => item.base)}
-      onPrev={() => resetForNavigation(() => void gallery.navigate(gallery.idx - 1))}
-      onNext={() => resetForNavigation(() => void gallery.navigate(gallery.idx + 1))}
-      onJump={(base) => resetForNavigation(() => gallery.jumpTo(base))}
+      onPrev={() => void gallery.navigate(gallery.idx - 1)}
+      onNext={() => void gallery.navigate(gallery.idx + 1)}
+      onJump={(base) => gallery.jumpTo(base)}
       footer={scoreInput}
     >
       <span className="mode-banner">模式：{modeLabel(gallery.mode)}</span>

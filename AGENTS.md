@@ -115,6 +115,20 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] OIDC 模式使用 `express-session` + `connect-redis`（共用 `REDIS_URL`）；Socket.IO handshake 也共用 session。
 - [x] 前端 TopNav 依 `/api/runtime-config` 回傳的 `authMode` 切換 Login / Logout 行為。
 - [x] README 新增「登入模式 (Auth)」段落，列出 Basic / OIDC 環境變數與常見 OP 設定提示。
+- [x] HEIC 上傳於 import 時自動轉 JPEG（`heic-convert`），原 HEIC 檔案以 JPEG 取代寫入 originals。
+- [x] Admin import 改為單一檔案 picker + drag-and-drop；dry-run details 摺疊顯示。
+- [x] `tmp/` 加入 `.gitignore`，repo URL 更新為 `NTUT-CPPC/photo-grade`。
+- [x] `ImportBatch` schema 加 `processedCount` / `totalCount`；import-service 每處理完一張即時回寫 DB。
+- [x] Progress endpoint 改回真實 `done/total`，message 形如 `PROCESSING 59/268`。
+- [x] Worker offline 偵測：`/api/admin/import/progress/:id` 與 `/confirm` 用 `queue.getWorkers()` 檢查，回 `workerOnline` 給前端，UI 顯示中文警告與 `docker compose up -d worker` 指引。
+- [x] Console log 加 prefix（`[queue]`、`[worker]`、`[import]`、`[media]`、`[admin]`），含 job lifecycle、每張下載大小/時間/HEIC 轉檔。
+- [x] BullMQ 自訂 `jobId` 不能含 `:`，改用 `import-${batchId}` 確保 dedup 同時不踩 BullMQ 限制。
+- [x] Confirm endpoint 改成「先 enqueue 再 update DB」，避免 enqueue 失敗時 DB 卡在錯誤的 QUEUED 狀態。
+- [x] 新增 `GET /api/admin/imports/active` 回最近一筆 DRY_RUN/QUEUED/PROCESSING batch（含轉好的 dryRun），admin 頁 mount 時 hydrate，reload 不再丟狀態。
+- [x] 新增 `GET /api/admin/queue/status` 回 BullMQ counts/workers/active/wait/failed jobs，不必 docker logs 就能診斷 queue。
+- [x] Admin 頁選檔即自動 dry-run；用 `AbortController` 中斷舊 fetch，移除手動「Dry run」按鈕。
+- [x] Admin 頁拆 `dryRunBusy` / `confirmBusy`；dry-run errors 時 Confirm disabled 並顯示原因。
+- [x] Admin progress panel 顯示批次檔名 + 相對時間；完成或非 worker-offline 錯誤時顯示「Start new import」重設。
 
 ### In Progress / Next
 
@@ -143,6 +157,11 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - Browser smoke 發現 server 在 npm workspace cwd 下找不到 `apps/web/dist`；已改用 `import.meta.url` 推算 repo root，Docker 重建後已驗證。
 - Browser Basic Auth smoke 使用 `http://user:password@localhost:8080/...` 時會讓相對 fetch 解析到含 userinfo URL；前端 API client 已改用 `window.location.origin` 產生乾淨 same-origin absolute URL。
 - Google Sheet 未啟用時，score 仍會成功寫 DB；outbox 保持 pending/retry，score 狀態會標成 `FAILED` 並記錄原因，避免現場評分被外部同步阻塞。
+- BullMQ 自訂 `jobId` 不能含 `:`，會 throw `Custom Id cannot contain :`；目前用 `import-${batchId}`。任何新增 queue 用法都要避開冒號。
+- Worker concurrency 預設 1：多筆 import 排隊跑，新 batch 在前一個完成前停在 `QUEUED`。前端 `workerOnline: true` 不代表立刻會被處理，只代表有 worker 連著。
+- 排隊卡住時先打 `GET /api/admin/queue/status`（auth required）看 `counts.active/wait/failed`、`active[].data` 跟 worker 列表；DB 顯示 `QUEUED` 但 BullMQ `active+wait` 都 0 代表 enqueue 沒成功（之前的 colon jobId bug 就是這種症狀）。
+- 路由順序：`/api/admin/imports/active` 必須宣告在 `/api/admin/imports/:id` catch-all 之前，否則會被當成 `id="active"` 去 `findUniqueOrThrow`。
+- `processImportBatch` 開頭會把 `processedCount` 重設為 0，所以 worker 中途被 SIGKILL 後 BullMQ retry 整個 job 時，UI 進度會看到回到 0 — 這是正確行為，不是 regression。
 - Reviewer subagent 受 usage limit 影響未完成；主 agent 需要自行做最終 review。
 - `node_modules`、build output、`data` 都是 ignored，不應提交。
 
@@ -391,3 +410,6 @@ After meaningful frontend changes:
 - Keep Google Sheet sync non-blocking.
 - If Docker is unavailable, still run `npm run build`, `npm test`, `npm audit --audit-level=moderate`, and `docker compose config`.
 - When Docker is available, run `docker compose up --build -d` and inspect logs before claiming deployment works.
+- Import / queue 相關問題優先查 `GET /api/admin/queue/status`（auth required）對照 DB `ImportBatch.status`：DB 是 QUEUED 但 BullMQ 看不到 active/wait job 代表 enqueue 失敗。Worker 處理流程的 `[queue]/[worker]/[import]/[media]` log prefix 可以一路追到單張下載時間。
+- 改 `apps/server/src/queue.ts` 加新 BullMQ job 時，jobId 不要含 `:`（BullMQ 會 throw）；現有 producer 都共用 `queue.add` 的 default options，新增 helper 請保持一致。
+- 在 `apps/server/src/index.ts` 新增 `/api/admin/imports/...` 路由時，注意已有 `/api/admin/imports/:id` catch-all，固定字串路由（如 `/api/admin/imports/active`）必須宣告在 `:id` route 之前，否則會被當作 `id="active"` 去 `findUniqueOrThrow`。

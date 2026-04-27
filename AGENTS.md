@@ -1,5 +1,18 @@
 # AGENTS.md
 
+## Commit Discipline (MUST)
+
+Every time `npm test` or `npm run build` passes for a self-contained change, immediately run `git commit` for the files you changed before producing the final assistant message. Do not wait for the user to ask. Do not batch unrelated changes into one commit.
+
+What counts as a segment:
+
+- A bug fix + its regression test.
+- A single feature module (template service, one route, one schema migration).
+- A docs-only change.
+- A refactor that leaves the test suite green.
+
+If `git status` shows files you did not modify, leave them alone — only stage files this session touched. If a single segment legitimately spans multiple files, commit them together; otherwise prefer one commit per segment.
+
 ## Project Purpose
 
 Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 `.codex/oldprojects` 內的 Flask 臨時系統，目標是讓一場攝影徵件活動可以從 Google 表單匯出的 CSV/XLSX 開始，完成作品下載、metadata 保存、現場主持同步、評審瀏覽、計分、Google Sheet 同步與後台管理。

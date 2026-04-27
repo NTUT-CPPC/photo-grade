@@ -1,4 +1,4 @@
-import { Check, Download, GripVertical, Plus, RefreshCw, Save, Trash2, Upload } from "lucide-react";
+import { Check, ChevronRight, Download, GripVertical, Plus, RefreshCw, Save, Trash2, Upload } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
 import { confirmImport, dryRunImport, getImportProgress, getJudges, saveJudges } from "../api/client";
 import { onImportProgress } from "../api/socket";
@@ -306,27 +306,30 @@ function DryRunResult({ result, total }: { result: ImportDryRunResult; total: nu
   return (
     <div className="dryrun-panel">
       <h2>Dry-run result</h2>
-      <div className="import-stats">
-        <span>Total {total ?? "-"}</span>
-        <span>Valid {result.valid ?? "-"}</span>
-        <span>Warnings {result.warnings?.length ?? 0}</span>
-        <span>Errors {result.errors?.length ?? 0}</span>
-      </div>
-      {result.warnings?.length ? <MessageList title="Warnings" items={result.warnings} /> : null}
       {result.errors?.length ? <MessageList title="Errors" items={result.errors} /> : null}
-      {result.items?.length ? (
-        <table className="import-table">
-          <tbody>
-            {result.items.slice(0, 80).map((item, index) => (
-              <tr key={`${item.base ?? item.name ?? index}`}>
-                <td>{item.base ?? item.name ?? "-"}</td>
-                <td>{item.status ?? "-"}</td>
-                <td>{item.message ?? ""}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : null}
+      <details className="dryrun-details">
+        <summary className="import-stats">
+          <ChevronRight size={16} className="dryrun-chevron" aria-hidden="true" />
+          <span>Total {total ?? "-"}</span>
+          <span>Valid {result.valid ?? "-"}</span>
+          <span>Warnings {result.warnings?.length ?? 0}</span>
+          <span>Errors {result.errors?.length ?? 0}</span>
+        </summary>
+        {result.warnings?.length ? <MessageList title="Warnings" items={result.warnings} /> : null}
+        {result.items?.length ? (
+          <table className="import-table">
+            <tbody>
+              {result.items.slice(0, 80).map((item, index) => (
+                <tr key={`${item.base ?? item.name ?? index}`}>
+                  <td>{item.base ?? item.name ?? "-"}</td>
+                  <td>{item.status ?? "-"}</td>
+                  <td>{item.message ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
+      </details>
     </div>
   );
 }

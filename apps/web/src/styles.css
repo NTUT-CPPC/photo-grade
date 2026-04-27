@@ -989,7 +989,8 @@ button:disabled {
 
 .import-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: auto repeat(4, minmax(0, 1fr));
+  align-items: center;
   gap: 0.45rem;
   margin-bottom: 1rem;
 }
@@ -1000,6 +1001,29 @@ button:disabled {
   padding: 0.55rem;
   text-align: center;
   color: #d8d8d8;
+}
+
+summary.import-stats {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+summary.import-stats::-webkit-details-marker {
+  display: none;
+}
+
+.dryrun-chevron {
+  color: #d8d8d8;
+  transition: transform 0.15s ease;
+}
+
+details[open] > summary .dryrun-chevron {
+  transform: rotate(90deg);
+}
+
+.dryrun-details[open] > summary.import-stats {
+  margin-bottom: 0.6rem;
 }
 
 .message-list {
@@ -1100,6 +1124,6 @@ button:disabled {
   }
 
   .import-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: auto repeat(2, minmax(0, 1fr));
   }
 }

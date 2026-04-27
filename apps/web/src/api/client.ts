@@ -1,4 +1,5 @@
 import type {
+  ActiveImportBatch,
   ImportDryRunResult,
   ImportProgress,
   Judge,
@@ -202,15 +203,26 @@ export async function submitScore(payload: ScorePayload): Promise<void> {
   });
 }
 
-export async function dryRunImport(form: FormData): Promise<ImportDryRunResult> {
+export async function dryRunImport(
+  file: File,
+  options: { signal?: AbortSignal } = {}
+): Promise<ImportDryRunResult> {
+  const form = new FormData();
+  form.set("dryRun", "true");
+  form.append("files", file, file.name);
   return firstOk<ImportDryRunResult>([
     "/api/admin/import/dry-run",
     "/api/import/dry-run",
     "/admin/import/dry-run"
   ], {
     method: "POST",
-    body: form
+    body: form,
+    signal: options.signal
   });
+}
+
+export async function getActiveImport(): Promise<ActiveImportBatch | null> {
+  return firstOk<ActiveImportBatch | null>(["/api/admin/imports/active"]);
 }
 
 export async function confirmImport(importId: string): Promise<ImportProgress | void> {

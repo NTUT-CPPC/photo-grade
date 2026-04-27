@@ -1,6 +1,13 @@
-import { Check, ChevronRight, Download, GripVertical, Plus, RefreshCw, Save, Trash2, Upload } from "lucide-react";
-import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
-import { confirmImport, dryRunImport, getImportProgress, getJudges, saveJudges } from "../api/client";
+import { Check, ChevronRight, Download, GripVertical, Plus, RotateCcw, Save, Trash2, Upload } from "lucide-react";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  confirmImport,
+  dryRunImport,
+  getActiveImport,
+  getImportProgress,
+  getJudges,
+  saveJudges
+} from "../api/client";
 import { onImportProgress } from "../api/socket";
 import type { ImportDryRunResult, ImportProgress, Judge } from "../types";
 
@@ -16,21 +23,35 @@ function isImportFile(file: File): boolean {
   return /\.(csv|xlsx)$/i.test(file.name);
 }
 
+type ActiveBatchMeta = {
+  fileName: string;
+  createdAt: string;
+};
+
 export function AdminPage() {
   const [file, setFile] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [dryRun, setDryRun] = useState<ImportDryRunResult | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
+  const [activeBatch, setActiveBatch] = useState<ActiveBatchMeta | null>(null);
   const [judges, setJudges] = useState<JudgeDraft[]>([]);
   const [judgeName, setJudgeName] = useState("");
   const [judgeBusy, setJudgeBusy] = useState(false);
   const [draggingJudgeId, setDraggingJudgeId] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [dryRunBusy, setDryRunBusy] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dryRunAbortRef = useRef<AbortController | null>(null);
+
   const importId = dryRun?.importId ?? dryRun?.id;
-  const canConfirm = Boolean(importId) && !busy;
+  const dryRunHasErrors = Boolean(dryRun?.errors?.length);
+  const canConfirm = Boolean(importId) && !confirmBusy && !dryRunBusy && !dryRunHasErrors;
   const total = dryRun?.total ?? dryRun?.items?.length ?? (file ? 1 : 0);
+  const isImportTerminal =
+    progress?.status === "complete" ||
+    (progress?.status === "error" && progress?.workerOnline !== false);
 
   useEffect(() => {
     return onImportProgress((next) => {
@@ -39,19 +60,27 @@ export function AdminPage() {
   }, [importId]);
 
   useEffect(() => {
-    if (!importId) return;
-    if (progress?.status === "complete") return;
-    if (progress?.status === "error" && progress?.workerOnline !== false) return;
+    if (!importId || !progress) return;
+    if (progress.phase === "DRY_RUN") return;
+    if (progress.status === "complete") return;
+    if (progress.status === "error" && progress.workerOnline !== false) return;
     const timer = window.setInterval(() => {
       getImportProgress(importId)
         .then(setProgress)
         .catch(() => undefined);
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [importId, progress?.status, progress?.workerOnline]);
+  }, [importId, progress]);
 
   useEffect(() => {
     void refreshJudges();
+  }, []);
+
+  useEffect(() => {
+    void hydrateActiveBatch();
+    return () => {
+      dryRunAbortRef.current?.abort();
+    };
   }, []);
 
   const progressPercent = useMemo(() => {
@@ -59,11 +88,49 @@ export function AdminPage() {
     return Math.round(((progress.done ?? 0) / progress.total) * 100);
   }, [progress]);
 
+  async function hydrateActiveBatch() {
+    try {
+      const batch = await getActiveImport();
+      if (!batch) return;
+      setDryRun({ ...batch.dryRun, importId: batch.id, id: batch.id });
+      setActiveBatch({ fileName: batch.fileName, createdAt: batch.createdAt });
+      if (batch.status !== "DRY_RUN") {
+        const totalFromBatch = batch.totalCount || batch.dryRun.total || 0;
+        setProgress({
+          importId: batch.id,
+          phase: batch.status,
+          status:
+            batch.status === "COMPLETED"
+              ? "complete"
+              : batch.status === "FAILED"
+                ? "error"
+                : "running",
+          done: batch.processedCount,
+          total: totalFromBatch,
+          message: batch.error ?? `${batch.status} ${batch.processedCount}/${totalFromBatch}`
+        });
+      }
+    } catch {
+      // 沒有活躍批次或 API 失敗 — 維持空白狀態
+    }
+  }
+
   function acceptFile(next: File | null) {
-    setFile(next);
-    setDryRun(null);
+    setError(null);
     setProgress(null);
-    setError(next && !isImportFile(next) ? "請選擇 CSV 或 Excel (.xlsx) 檔案。" : null);
+    setActiveBatch(null);
+    setFile(next);
+    if (!next) {
+      dryRunAbortRef.current?.abort();
+      setDryRun(null);
+      return;
+    }
+    if (!isImportFile(next)) {
+      setError("請選擇 CSV 或 Excel (.xlsx) 檔案。");
+      setDryRun(null);
+      return;
+    }
+    void runDryRun(next);
   }
 
   function selectFile(event: ChangeEvent<HTMLInputElement>) {
@@ -95,30 +162,35 @@ export function AdminPage() {
     }
   }
 
-  async function runDryRun() {
-    if (!file) return;
-    if (!isImportFile(file)) {
-      setError("請選擇 CSV 或 Excel (.xlsx) 檔案。");
-      return;
-    }
-    setBusy(true);
-    setError(null);
+  async function runDryRun(target: File) {
+    dryRunAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    dryRunAbortRef.current = ctrl;
+    setDryRun(null);
     setProgress(null);
+    setError(null);
+    setDryRunBusy(true);
     try {
-      const form = new FormData();
-      form.set("dryRun", "true");
-      form.append("files", file, file.name);
-      setDryRun(await dryRunImport(form));
+      const result = await dryRunImport(target, { signal: ctrl.signal });
+      if (ctrl.signal.aborted) return;
+      setDryRun(result);
+      setActiveBatch({ fileName: target.name, createdAt: new Date().toISOString() });
     } catch (err) {
+      if (ctrl.signal.aborted) return;
+      const name = (err as Error)?.name;
+      if (name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Import dry-run failed");
     } finally {
-      setBusy(false);
+      if (dryRunAbortRef.current === ctrl) {
+        dryRunAbortRef.current = null;
+        setDryRunBusy(false);
+      }
     }
   }
 
   async function runConfirm() {
     if (!importId) return;
-    setBusy(true);
+    setConfirmBusy(true);
     setError(null);
     try {
       const initial = await confirmImport(importId);
@@ -126,8 +198,18 @@ export function AdminPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import confirm failed");
     } finally {
-      setBusy(false);
+      setConfirmBusy(false);
     }
+  }
+
+  function resetImport() {
+    dryRunAbortRef.current?.abort();
+    setFile(null);
+    setDryRun(null);
+    setProgress(null);
+    setActiveBatch(null);
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function addJudgeName() {
@@ -257,33 +339,51 @@ export function AdminPage() {
           onDrop={handleDrop}
         >
           <Upload size={22} />
-          <span>{file ? file.name : "選擇或拖曳 CSV / Excel 檔案"}</span>
-          <input type="file" accept={IMPORT_ACCEPT} onChange={selectFile} />
+          <span>
+            {file
+              ? file.name
+              : activeBatch
+                ? activeBatch.fileName
+                : "選擇或拖曳 CSV / Excel 檔案 — 選完會自動 dry-run"}
+          </span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={IMPORT_ACCEPT}
+            onChange={selectFile}
+          />
         </label>
         <div className="admin-actions">
           <button
             type="button"
-            title="先檢查欄位與資料格式，不會真正下載檔案或寫入作品。"
-            onClick={() => void runDryRun()}
-            disabled={busy || !file}
-          >
-            <RefreshCw size={18} />
-            Dry run
-          </button>
-          <button
-            type="button"
-            title="確認後才會開始背景匯入：下載作品、產生縮圖與 metadata。"
+            title={
+              dryRunHasErrors
+                ? "Dry-run 有錯誤，請修正欄位後重新選檔。"
+                : "確認後才會開始背景匯入：下載作品、產生縮圖與 metadata。"
+            }
             onClick={() => void runConfirm()}
             disabled={!canConfirm}
           >
             <Check size={18} />
-            Confirm
+            {confirmBusy ? "Queueing…" : "Confirm import"}
           </button>
+          {isImportTerminal ? (
+            <button type="button" onClick={resetImport} title="清除目前狀態並開始新匯入。">
+              <RotateCcw size={18} />
+              Start new import
+            </button>
+          ) : null}
         </div>
         {error ? <p className="system-note error">{error}</p> : null}
+        {dryRunBusy ? <p className="system-note">Dry-run checking…</p> : null}
         {dryRun ? <DryRunResult result={dryRun} total={total} /> : null}
         {progress ? (
           <div className="progress-panel">
+            {activeBatch ? (
+              <p className="progress-meta">
+                {activeBatch.fileName} · {formatRelativeTime(activeBatch.createdAt)}
+              </p>
+            ) : null}
             <div className="progress-head">
               <span>{progress.phase ?? progress.status ?? "Import"}</span>
               <span>
@@ -310,6 +410,16 @@ export function AdminPage() {
 
 function toJudgeDraft(judge: Judge): JudgeDraft {
   return { clientId: judge.id, id: judge.id, name: judge.name };
+}
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+  const diffSec = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (diffSec < 60) return "剛剛";
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分鐘前`;
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小時前`;
+  return `${Math.floor(diffSec / 86400)} 天前`;
 }
 
 function DryRunResult({ result, total }: { result: ImportDryRunResult; total: number }) {

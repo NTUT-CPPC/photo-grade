@@ -1041,6 +1041,12 @@ details[open] > summary .dryrun-chevron {
   color: #dcdcdc;
 }
 
+.progress-meta {
+  margin: 0 0 0.4rem 0;
+  font-size: 0.85rem;
+  color: #999;
+}
+
 .progress-head {
   display: flex;
   justify-content: space-between;

@@ -192,6 +192,32 @@ app.post(["/api/admin/import/confirm", "/api/admin/imports/:id/confirm"], requir
   }
 });
 
+app.get("/api/admin/imports/active", requireAuth(), async (_req, res, next) => {
+  try {
+    const active = await prisma.importBatch.findFirst({
+      where: { status: { in: ["DRY_RUN", "QUEUED", "PROCESSING"] } },
+      orderBy: { createdAt: "desc" }
+    });
+    if (!active) {
+      res.json(null);
+      return;
+    }
+    res.json({
+      id: active.id,
+      fileName: active.fileName,
+      status: active.status,
+      processedCount: active.processedCount,
+      totalCount: active.totalCount,
+      error: active.error,
+      createdAt: active.createdAt,
+      updatedAt: active.updatedAt,
+      dryRun: toDryRunResponse(active.id, active.dryRunJson as Parameters<typeof toDryRunResponse>[1])
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get(["/api/admin/import/progress/:id", "/api/admin/imports/:id"], requireAuth(), async (req, res, next) => {
   try {
     const id = firstString(req.params.id);

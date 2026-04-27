@@ -85,6 +85,20 @@ export type ImportProgress = {
   workerOnline?: boolean;
 };
 
+export type ImportBatchStatus = "DRY_RUN" | "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED";
+
+export type ActiveImportBatch = {
+  id: string;
+  fileName: string;
+  status: ImportBatchStatus;
+  processedCount: number;
+  totalCount: number;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  dryRun: ImportDryRunResult;
+};
+
 export type Judge = {
   id: string;
   name: string;

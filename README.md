@@ -2,6 +2,8 @@
 
 Docker-first 攝影評分系統。它取代舊 Flask 臨時評分器，提供後台匯入、作品下載/轉檔、主持同步、計分、評審瀏覽與 Google Sheet 同步。
 
+專案網址：[https://github.com/Dao-you/photo-grade](https://github.com/Dao-you/photo-grade)
+
 **`docker-compose.yml` 是預期的主要部署入口**——所有 runtime 環境變數都在裡面宣告且帶有預設值與註解，從原始碼簽出後 `cp .env.example .env && docker compose up --build -d` 應該就能跑起來。
 
 ## Docker Compose 部署
@@ -14,7 +16,7 @@ Docker-first 攝影評分系統。它取代舊 Flask 臨時評分器，提供後
 ### 2. 取得程式碼與 `.env`
 
 ```powershell
-git clone <this-repo>
+git clone https://github.com/Dao-you/photo-grade.git
 cd photo-grade
 Copy-Item .env.example .env
 ```

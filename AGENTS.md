@@ -382,6 +382,8 @@ After meaningful frontend changes:
 - Keep commits small and named by behavior.
 - 每完成一個可驗證段落就提交一次 commit，避免累積過大未提交改動。
 - Update `Progress` in this file before and after major work segments.
+- 維護環境變數時，不能只改 `.env`/`.env.example`：必須同步檢查 `docker-compose.yml` 的 `${VAR:-default}` 是否有對應、名稱是否一致、預設值是否合理（含 Synology 這類無法建立 `.env` 的 UI 部署情境）。
+- 每次調整 env 相關設定後，至少執行一次變數對照：`.env.example` 中的變數應可在 `docker-compose.yml` 覆蓋，compose 使用到的變數也應在 `.env.example` 有文件化（純說明字串如 `${VAR:-default}` 註解示意除外）。
 - Do not create a second backend package or schema. Use `apps/server`.
 - Do not write runtime files outside `DATA_DIR`.
 - Do not commit `.env`, `data`, `node_modules`, or build artifacts.

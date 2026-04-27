@@ -6,6 +6,8 @@
 #   3. 開啟 http://localhost:8080/view
 #
 # 所有未在 .env 設定的變數都會 fallback 到 ${VAR:-default} 的預設值。
+# BUILD_CONTEXT 預設為此專案 GitHub main 分支，可直接遠端下載並建置：
+#   BUILD_CONTEXT=https://github.com/Dao-you/photo-grade.git#main
 # AUTH_MODE=oidc 時，相關 OIDC_* / SESSION_SECRET 必填，否則 server 啟動會直接 fail。
 
 x-app-env: &app-env
@@ -22,7 +24,7 @@ x-app-env: &app-env
 
   # --- Database / Cache ---
   # 預設指向同一個 compose 內的 postgres / redis service。
-  DATABASE_URL: postgresql://photo_grade:${POSTGRES_PASSWORD:-photo_grade}@postgres:5432/photo_grade?schema=public
+  DATABASE_URL: ${DATABASE_URL:-postgresql://photo_grade:photo_grade@postgres:5432/photo_grade?schema=public}
   REDIS_URL: ${REDIS_URL:-redis://redis:6379}
 
   # --- Auth ---
@@ -62,7 +64,8 @@ x-app-env: &app-env
 
 services:
   app:
-    build: .
+    build:
+      context: ${BUILD_CONTEXT:-https://github.com/Dao-you/photo-grade.git#main}
     # 啟動時 push Prisma schema，再起 server。
     command: sh -c "npm run db:push && npm run start"
     environment:
@@ -79,7 +82,8 @@ services:
     restart: unless-stopped
 
   worker:
-    build: .
+    build:
+      context: ${BUILD_CONTEXT:-https://github.com/Dao-you/photo-grade.git#main}
     command: npm run worker
     environment:
       <<: *app-env

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { exiftool } from "exiftool-vendored";
+import heicConvert from "heic-convert";
 import sharp from "sharp";
 import { extractGoogleDriveFileId } from "@photo-grade/shared";
 import { prisma } from "../prisma.js";
@@ -8,18 +9,24 @@ import { assertInsideDataDir, dataDirs, safeFileName } from "../storage.js";
 import { env } from "../env.js";
 
 export async function processMediaForWork(workId: string, code: string, sourceUrl: string): Promise<void> {
-  const downloaded = await downloadPublicFile(sourceUrl, code);
-  await upsertAsset(workId, "original", downloaded.path, downloaded.mime, downloaded.size);
+  let downloaded = await downloadPublicFile(sourceUrl, code);
 
   const metadataPath = assertInsideDataDir(path.join(dataDirs.metadata, `${safeFileName(code)}.json`));
+  let metadataPayload: string;
   try {
     const metadata = await exiftool.read(downloaded.path);
-    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
-    await upsertAsset(workId, "metadata", metadataPath, "application/json", Buffer.byteLength(JSON.stringify(metadata)));
+    metadataPayload = JSON.stringify(metadata, null, 2);
   } catch (err) {
-    await fs.writeFile(metadataPath, JSON.stringify({ error: String(err) }, null, 2), "utf8");
-    await upsertAsset(workId, "metadata", metadataPath, "application/json", 0);
+    metadataPayload = JSON.stringify({ error: String(err) }, null, 2);
   }
+
+  if (isHeicAsset(downloaded.path, downloaded.mime)) {
+    downloaded = await convertHeicToJpeg(downloaded.path, code);
+  }
+
+  await upsertAsset(workId, "original", downloaded.path, downloaded.mime, downloaded.size);
+  await fs.writeFile(metadataPath, metadataPayload, "utf8");
+  await upsertAsset(workId, "metadata", metadataPath, "application/json", Buffer.byteLength(metadataPayload));
 
   await createDerivative(workId, code, downloaded.path, "preview", dataDirs.previews, 2160, 85);
   await createDerivative(workId, code, downloaded.path, "thumbnail", dataDirs.thumbnails, 900, 78);
@@ -137,4 +144,28 @@ function filenameFromDisposition(disposition: string): string {
 function safeExtension(ext: string): string | null {
   if (!ext || ext.length > 10 || /[^a-z0-9.]/i.test(ext)) return null;
   return ext;
+}
+
+function isHeicAsset(filePath: string, mime: string): boolean {
+  const m = mime.toLowerCase();
+  if (m.includes("heic") || m.includes("heif")) return true;
+  const ext = path.extname(filePath).toLowerCase();
+  return ext === ".heic" || ext === ".heif";
+}
+
+async function convertHeicToJpeg(originalPath: string, code: string): Promise<{ path: string; mime: string; size: number }> {
+  const input = await fs.readFile(originalPath);
+  let output: ArrayBuffer;
+  try {
+    output = await heicConvert({ buffer: input, format: "JPEG", quality: 0.9 });
+  } catch (err) {
+    throw new Error(`HEIC conversion failed for ${path.basename(originalPath)}: ${(err as Error).message}`);
+  }
+  const buffer = Buffer.from(output);
+  const jpgPath = assertInsideDataDir(path.join(dataDirs.originals, `${safeFileName(code)}.jpg`));
+  await fs.writeFile(jpgPath, buffer);
+  if (jpgPath !== originalPath) {
+    await fs.unlink(originalPath).catch(() => undefined);
+  }
+  return { path: jpgPath, mime: "image/jpeg", size: buffer.length };
 }

@@ -28,6 +28,7 @@
     "express": "^5.1.0",
     "express-session": "^1.19.0",
     "googleapis": "^166.0.0",
+    "heic-convert": "^2.1.0",
     "ioredis": "^5.8.2",
     "multer": "^2.0.2",
     "openid-client": "^6.8.3",

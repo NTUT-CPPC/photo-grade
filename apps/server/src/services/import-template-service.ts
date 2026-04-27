@@ -15,8 +15,10 @@ const TEMPLATE_HEADERS = [
   "作品2_創作理念"
 ] as const;
 
+const XLSX_NUMBER_FORMULA_ROWS = 5000;
+
 const TEMPLATE_SAMPLE_ROW = [
-  "123",
+  "",
   "name@example.com",
   "示範大學",
   "視覺傳達設計系",
@@ -38,6 +40,11 @@ export function importTemplateCsvBuffer(): Buffer {
 
 export function importTemplateXlsxBuffer(): Buffer {
   const sheet = xlsxUtils.aoa_to_sheet([Array.from(TEMPLATE_HEADERS), Array.from(TEMPLATE_SAMPLE_ROW)]);
+  for (let row = 2; row <= XLSX_NUMBER_FORMULA_ROWS; row++) {
+    sheet[`A${row}`] = { t: "n", f: "ROW()-1", v: row - 1 };
+  }
+  const lastCol = xlsxUtils.encode_col(TEMPLATE_HEADERS.length - 1);
+  sheet["!ref"] = `A1:${lastCol}${XLSX_NUMBER_FORMULA_ROWS}`;
   const workbook = xlsxUtils.book_new();
   xlsxUtils.book_append_sheet(workbook, sheet, "Template");
   const out = xlsxWrite(workbook, { type: "buffer", bookType: "xlsx" });

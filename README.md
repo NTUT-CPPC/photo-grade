@@ -2,46 +2,121 @@
 
 Docker-first 攝影評分系統。它取代舊 Flask 臨時評分器，提供後台匯入、作品下載/轉檔、主持同步、計分、評審瀏覽與 Google Sheet 同步。
 
-## 快速啟動
+**`docker-compose.yml` 是預期的主要部署入口**——所有 runtime 環境變數都在裡面宣告且帶有預設值與註解，從原始碼簽出後 `cp .env.example .env && docker compose up --build -d` 應該就能跑起來。
 
-1. 複製環境設定：
+## Docker Compose 部署
 
-   ```powershell
-   Copy-Item .env.example .env
-   ```
+### 1. 前置需求
 
-2. 編輯 `.env`，至少設定一組登入帳密（給 host/score/admin 共用，登入成功就能進三個介面）：
+- Docker Engine 24+ 與 Docker Compose v2（`docker compose ...`，不是舊的 `docker-compose`）。
+- 對外要 80/443 時通常會在前面架反向代理（nginx、Caddy、Traefik 等）做 TLS termination；內部仍可走預設的 8080。
 
-   ```env
-   AUTH_MODE=basic
-   AUTH_USERNAME=admin
-   AUTH_PASSWORD=change-me
-   ```
+### 2. 取得程式碼與 `.env`
 
-   若要改用 OIDC，請看下方 [登入模式 (Auth)](#登入模式-auth)。
+```powershell
+git clone <this-repo>
+cd photo-grade
+Copy-Item .env.example .env
+```
 
-   若對外提供固定入口網址（例如反向代理或公網網域），請一併設定：
+`.env` 內所有變數都會被 `docker-compose.yml` 讀取。需要覆寫的至少是登入帳密：
 
-   ```env
-   PUBLIC_ENTRY_URL=https://your-domain.example.com
-   ```
+```env
+AUTH_MODE=basic
+AUTH_USERNAME=admin
+AUTH_PASSWORD=請改成強密碼
 
-3. 啟動：
+# 對外網址；放在反向代理後請填正式網域，會反映在 Host 頁面 QR code。
+APP_BASE_URL=https://judge.example.com
+PUBLIC_ENTRY_URL=https://judge.example.com
+```
 
-   ```powershell
-   docker compose up --build
-   ```
+如果要改用 OIDC 登入，請看 [登入模式 (Auth)](#登入模式-auth)。
 
-4. 開啟：
+### 3. 啟動
 
-   - Admin: http://localhost:8080/admin
-- Host: http://localhost:8080/host
+```powershell
+docker compose up --build -d
+docker compose ps
+docker compose logs --tail=200 app worker
+```
+
+- `app`：Express + Socket.IO server，啟動時會跑 `prisma db push` 自動同步 schema。
+- `worker`：BullMQ worker，跑匯入下載/轉檔與 Google Sheet 同步。
+- `postgres`：PostgreSQL 17，資料放在 named volume `postgres-data`。
+- `redis`：Redis 7，給 BullMQ 與 OIDC session 共用。
+
+服務正常後可開：
+
+- Admin: http://localhost:8080/admin
+- Host:  http://localhost:8080/host
 - Score: http://localhost:8080/score
-- View: http://localhost:8080/view
+- View:  http://localhost:8080/view
 
-`PUBLIC_ENTRY_URL` 會用於 Host 頁面 top nav 內的 View QR code 與入口連結。
+`/host`、`/score`、`/admin` 需要登入；`/view` 公開。任何登入成功的帳號都能使用三個受保護介面，沒有角色分流。
 
-`/host`、`/score`、`/admin` 需要登入；`/view` 不需要登入。任何成功登入都可以使用三個受保護的介面，沒有角色限制。
+### 4. 套用變更與重啟
+
+只改 app/worker 程式碼（保留 DB/Redis）：
+
+```powershell
+docker compose up --build -d app worker
+```
+
+完整重啟全部容器：
+
+```powershell
+docker compose down
+docker compose up --build -d
+```
+
+清除 DB（**會刪除所有評分與作品紀錄**）：
+
+```powershell
+docker compose down -v
+```
+
+### 5. 環境變數一覽
+
+`docker-compose.yml` 內的 `x-app-env` 區塊已宣告下列所有變數，且提供合理預設值；`.env` 只需要寫想覆寫的項目。
+
+| 變數 | 預設 | 必要 | 說明 |
+| --- | --- | --- | --- |
+| `NODE_ENV` | `production` | 否 | 影響 cookie secure 判斷與 logging。 |
+| `PORT` | `8080` | 否 | 容器內 server listen port。對外 port 用 `APP_PORT` 控制。 |
+| `APP_PORT` | `8080` | 否 | host 對外暴露的 port，對應 `APP_PORT:8080`。 |
+| `APP_BASE_URL` | `http://localhost:8080` | 否 | 對外網址；OIDC callback 與 Host QR 入口會用到。 |
+| `PUBLIC_ENTRY_URL` | 同 `APP_BASE_URL` | 否 | Host 頁面顯示的 View 入口 QR code 網址。 |
+| `DATA_DIR` | `/data` | 否 | 容器內非 DB 可變資料根目錄。對應 host 的 `./data`。 |
+| `POSTGRES_PASSWORD` | `photo_grade` | **建議覆寫** | 同時用於 `postgres` service 與 `DATABASE_URL`。 |
+| `DATABASE_URL` | 自動組裝 | 否 | 預設指向 compose 內的 postgres；外接 DB 時可整段覆寫。 |
+| `REDIS_URL` | `redis://redis:6379` | 否 | 預設指向 compose 內的 redis。 |
+| `AUTH_MODE` | `basic` | 否 | `basic` 或 `oidc`。 |
+| `AUTH_USERNAME` | `admin` | basic 模式必改 | Basic Auth 帳號。 |
+| `AUTH_PASSWORD` | `change-me` | basic 模式必改 | Basic Auth 密碼。 |
+| `SESSION_SECRET` | _(空)_ | OIDC 必填 | 用來簽 session cookie，至少 32 字元隨機字串。 |
+| `COOKIE_SECURE` | `auto` | 否 | `auto` / `true` / `false`。 |
+| `OIDC_ISSUER_URL` | _(空)_ | OIDC 必填 | OP 的 issuer URL，會走 `/.well-known/openid-configuration` discovery。 |
+| `OIDC_CLIENT_ID` | _(空)_ | OIDC 必填 | OP 端註冊的 client id。 |
+| `OIDC_CLIENT_SECRET` | _(空)_ | OIDC 必填 | OP 端對應的 secret。 |
+| `OIDC_REDIRECT_URI` | _(空，自動)_ | 否 | 留空時自動使用 `${APP_BASE_URL}/auth/callback`，**必須與 OP 端註冊一字不差**。 |
+| `OIDC_SCOPES` | `openid profile email` | 否 | 自訂 OIDC scope。 |
+| `OIDC_POST_LOGOUT_REDIRECT_URI` | _(空)_ | 否 | 設定後 logout 會 redirect。 |
+| `GOOGLE_SHEETS_ENABLED` | `false` | 否 | `true` 才會啟用 Sheet 同步 worker。 |
+| `GOOGLE_SHEET_ID` | _(空)_ | 啟用 Sheet 必填 | 試算表 ID（網址中 `/d/{ID}/` 那段）。 |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | _(空)_ | 二擇一 | 直接放 service account JSON 字串。 |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | `/data/secrets/google-service-account.json` | 二擇一 | 指向掛載到容器內的 key 檔案。 |
+| `MAX_IMPORT_FILE_MB` | `50` | 否 | 匯入 CSV/XLSX 上限。 |
+| `MAX_MEDIA_FILE_MB` | `200` | 否 | 單一作品下載上限。 |
+| `SOCKET_CORS_ORIGIN` | _(空)_ | 跨網域時 | 留空 = same-origin；跨網域請填前端 origin（含 scheme）。 |
+
+### 6. 反向代理建議
+
+App 啟動時 `trust proxy = 1`，OIDC callback 與 cookie secure 判斷會依賴 `X-Forwarded-Proto` / `Host`。請務必在前面放一層自己控制的 proxy（nginx / Caddy / Traefik），並且：
+
+- 終止 TLS 後將 `X-Forwarded-Proto: https`、`X-Forwarded-Host` 帶到後端。
+- WebSocket 升級必須通（`/socket.io/` 路徑）。
+- 若要直接暴露容器到公網而沒有 proxy，請把 `apps/server/src/index.ts` 中的 `trust proxy` 改回 `false`，避免 client 偽造 header 影響 OIDC callback URL。
 
 ## 登入模式 (Auth)
 

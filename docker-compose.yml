@@ -1,30 +1,74 @@
+# Photo Grade — primary deployment entry point.
+#
+# 用法：
+#   1. cp .env.example .env  並填入需要的值（至少 AUTH_USERNAME / AUTH_PASSWORD）。
+#   2. docker compose up --build -d
+#   3. 開啟 http://localhost:8080/view
+#
+# 所有未在 .env 設定的變數都會 fallback 到 ${VAR:-default} 的預設值。
+# AUTH_MODE=oidc 時，相關 OIDC_* / SESSION_SECRET 必填，否則 server 啟動會直接 fail。
+
 x-app-env: &app-env
-  NODE_ENV: production
-  PORT: 8080
-  DATA_DIR: /data
+  # --- Runtime ---
+  NODE_ENV: ${NODE_ENV:-production}
+  PORT: ${PORT:-8080}
+  # 對外公開入口，給 Host 頁面 QR code 與其他連結使用；放在反向代理後請填正式網域。
+  APP_BASE_URL: ${APP_BASE_URL:-http://localhost:8080}
+  PUBLIC_ENTRY_URL: ${PUBLIC_ENTRY_URL:-http://localhost:8080}
+
+  # --- Storage ---
+  # 容器內非 DB 可變資料路徑；對應 host 的 ./data bind mount。
+  DATA_DIR: ${DATA_DIR:-/data}
+
+  # --- Database / Cache ---
+  # 預設指向同一個 compose 內的 postgres / redis service。
   DATABASE_URL: postgresql://photo_grade:${POSTGRES_PASSWORD:-photo_grade}@postgres:5432/photo_grade?schema=public
-  REDIS_URL: redis://redis:6379
-  HOST_USERNAME: ${HOST_USERNAME:?set HOST_USERNAME}
-  HOST_PASSWORD: ${HOST_PASSWORD:?set HOST_PASSWORD}
-  SCORE_USERNAME: ${SCORE_USERNAME:?set SCORE_USERNAME}
-  SCORE_PASSWORD: ${SCORE_PASSWORD:?set SCORE_PASSWORD}
-  ADMIN_USERNAME: ${ADMIN_USERNAME:?set ADMIN_USERNAME}
-  ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
-  HOST_AUTH_USERNAME: ${HOST_USERNAME:?set HOST_USERNAME}
-  HOST_AUTH_PASSWORD: ${HOST_PASSWORD:?set HOST_PASSWORD}
-  SCORE_AUTH_USERNAME: ${SCORE_USERNAME:?set SCORE_USERNAME}
-  SCORE_AUTH_PASSWORD: ${SCORE_PASSWORD:?set SCORE_PASSWORD}
-  ADMIN_AUTH_USERNAME: ${ADMIN_USERNAME:?set ADMIN_USERNAME}
-  ADMIN_AUTH_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+
+  # --- Auth ---
+  # basic：HTTP Basic Auth，比對單一 AUTH_USERNAME / AUTH_PASSWORD。
+  # oidc ：OpenID Connect Authorization Code (PKCE)，session 用 Redis 存放。
+  AUTH_MODE: ${AUTH_MODE:-basic}
+  AUTH_USERNAME: ${AUTH_USERNAME:-admin}
+  AUTH_PASSWORD: ${AUTH_PASSWORD:-change-me}
+
+  # --- Session (AUTH_MODE=oidc 必填 SESSION_SECRET) ---
+  SESSION_SECRET: ${SESSION_SECRET:-}
+  # auto = 在 NODE_ENV=production 時為 secure；可改成 true / false 強制覆蓋。
+  COOKIE_SECURE: ${COOKIE_SECURE:-auto}
+
+  # --- OIDC (AUTH_MODE=oidc 時 ISSUER/CLIENT_ID/CLIENT_SECRET 必填) ---
+  OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+  OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+  OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+  # 留空時自動使用 ${APP_BASE_URL}/auth/callback；必須與 OP 端註冊的 callback URL 完全一致。
+  OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+  OIDC_SCOPES: ${OIDC_SCOPES:-openid profile email}
+  # 選填；OP 支援 end_session_endpoint 時 logout 會帶。
+  OIDC_POST_LOGOUT_REDIRECT_URI: ${OIDC_POST_LOGOUT_REDIRECT_URI:-}
+
+  # --- Google Sheet 同步（選用） ---
+  GOOGLE_SHEETS_ENABLED: ${GOOGLE_SHEETS_ENABLED:-false}
+  GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
+  # 二擇一：直接放 JSON 字串，或指向 /data/secrets 下的 service account key 檔案。
+  GOOGLE_SERVICE_ACCOUNT_JSON: ${GOOGLE_SERVICE_ACCOUNT_JSON:-}
+  GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-/data/secrets/google-service-account.json}
+
+  # --- Limits / CORS ---
+  MAX_IMPORT_FILE_MB: ${MAX_IMPORT_FILE_MB:-50}
+  MAX_MEDIA_FILE_MB: ${MAX_MEDIA_FILE_MB:-200}
+  # 留空代表 same-origin；跨網域時請填前端 origin（含 scheme），例如 https://judge.example.com。
+  SOCKET_CORS_ORIGIN: ${SOCKET_CORS_ORIGIN:-}
 
 services:
   app:
     build: .
+    # 啟動時 push Prisma schema，再起 server。
     command: sh -c "npm run db:push && npm run start"
     environment:
       <<: *app-env
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-8080}:8080"
     volumes:
       - ./data:/data
     depends_on:
@@ -32,6 +76,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    restart: unless-stopped
 
   worker:
     build: .
@@ -43,8 +88,11 @@ services:
     depends_on:
       app:
         condition: service_started
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_started
+    restart: unless-stopped
 
   postgres:
     image: postgres:17
@@ -59,11 +107,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    restart: unless-stopped
 
   redis:
     image: redis:7
     volumes:
       - redis-data:/data
+    restart: unless-stopped
 
 volumes:
   postgres-data:

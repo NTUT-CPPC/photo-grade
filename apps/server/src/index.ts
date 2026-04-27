@@ -164,11 +164,11 @@ app.post(["/api/admin/import/confirm", "/api/admin/imports/:id/confirm"], requir
     const importId = firstString(req.params.id) ?? firstString(req.body?.importId) ?? firstString(req.body?.id);
     if (!importId) throw new Error("importId is required.");
     console.log(`[admin] confirm import importId=${importId}`);
+    await enqueueImport(importId);
     await prisma.importBatch.update({
       where: { id: importId },
       data: { status: "QUEUED", error: null, processedCount: 0 }
     });
-    await enqueueImport(importId);
     let workerOnline: boolean | undefined;
     try {
       workerOnline = (await queue.getWorkers()).length > 0;
@@ -186,6 +186,32 @@ app.post(["/api/admin/import/confirm", "/api/admin/imports/:id/confirm"], requir
           ? "Worker offline — no BullMQ worker is listening on the queue. Start the worker container (`docker compose up -d worker`)."
           : "Import queued.",
       workerOnline
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/queue/status", requireAuth(), async (_req, res, next) => {
+  try {
+    const counts = await queue.getJobCounts("wait", "active", "delayed", "failed", "completed", "paused");
+    const workers = await queue.getWorkers();
+    const active = await queue.getJobs(["active"], 0, 10);
+    const wait = await queue.getJobs(["wait"], 0, 10);
+    const failed = await queue.getJobs(["failed"], 0, 10);
+    res.json({
+      counts,
+      workers: workers.map((w) => ({ id: w.id, name: w.name, addr: w.addr })),
+      active: active.map((j) => ({
+        id: j.id,
+        name: j.name,
+        data: j.data,
+        attemptsMade: j.attemptsMade,
+        timestamp: j.timestamp,
+        processedOn: j.processedOn
+      })),
+      wait: wait.map((j) => ({ id: j.id, name: j.name, data: j.data, timestamp: j.timestamp })),
+      failed: failed.map((j) => ({ id: j.id, name: j.name, data: j.data, failedReason: j.failedReason }))
     });
   } catch (error) {
     next(error);

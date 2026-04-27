@@ -993,10 +993,24 @@ button:disabled {
 
 .import-stats {
   display: grid;
-  grid-template-columns: auto repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: center;
   gap: 0.45rem;
+  width: 100%;
   margin-bottom: 1rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.import-stats:focus-visible {
+  outline: 2px solid #ffca28;
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .import-stats span {
@@ -1005,29 +1019,15 @@ button:disabled {
   padding: 0.55rem;
   text-align: center;
   color: #d8d8d8;
+  transition: background 0.15s ease;
 }
 
-summary.import-stats {
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
+.import-stats:hover span {
+  background: #303030;
 }
 
-summary.import-stats::-webkit-details-marker {
-  display: none;
-}
-
-.dryrun-chevron {
-  color: #d8d8d8;
-  transition: transform 0.15s ease;
-}
-
-details[open] > summary .dryrun-chevron {
-  transform: rotate(90deg);
-}
-
-.dryrun-details[open] > summary.import-stats {
-  margin-bottom: 0.6rem;
+.dryrun-detail {
+  width: min(40rem, 100%);
 }
 
 .message-list {
@@ -1135,6 +1135,6 @@ details[open] > summary .dryrun-chevron {
   }
 
   .import-stats {
-    grid-template-columns: auto repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

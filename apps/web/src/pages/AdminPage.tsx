@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Download, GripVertical, Plus, RotateCcw, Save, Trash2, Upload, X } from "lucide-react";
+import { Check, Download, GripVertical, Plus, RotateCcw, Save, Trash2, Upload, X } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelImport,
@@ -462,33 +462,68 @@ function formatRelativeTime(iso: string): string {
 }
 
 function DryRunResult({ result, total }: { result: ImportDryRunResult; total: number }) {
+  const [open, setOpen] = useState(false);
   return (
     <div className="dryrun-panel">
       <h2>Dry-run result</h2>
-      {result.errors?.length ? <MessageList title="Errors" items={result.errors} /> : null}
-      <details className="dryrun-details">
-        <summary className="import-stats">
-          <ChevronRight size={16} className="dryrun-chevron" aria-hidden="true" />
-          <span>Total {total ?? "-"}</span>
-          <span>Valid {result.valid ?? "-"}</span>
-          <span>Warnings {result.warnings?.length ?? 0}</span>
-          <span>Errors {result.errors?.length ?? 0}</span>
-        </summary>
-        {result.warnings?.length ? <MessageList title="Warnings" items={result.warnings} /> : null}
-        {result.items?.length ? (
-          <table className="import-table">
-            <tbody>
-              {result.items.slice(0, 80).map((item, index) => (
-                <tr key={`${item.base ?? item.name ?? index}`}>
-                  <td>{item.base ?? item.name ?? "-"}</td>
-                  <td>{item.status ?? "-"}</td>
-                  <td>{item.message ?? ""}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : null}
-      </details>
+      <button
+        type="button"
+        className="import-stats"
+        onClick={() => setOpen(true)}
+        aria-label="顯示完整 dry-run 結果"
+      >
+        <span>Total {total ?? "-"}</span>
+        <span>Valid {result.valid ?? "-"}</span>
+        <span>Warnings {result.warnings?.length ?? 0}</span>
+        <span>Errors {result.errors?.length ?? 0}</span>
+      </button>
+      {open ? <DryRunDetailDialog result={result} onClose={() => setOpen(false)} /> : null}
+    </div>
+  );
+}
+
+function DryRunDetailDialog({ result, onClose }: { result: ImportDryRunResult; onClose: () => void }) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="score-detail-backdrop" onClick={onClose} role="presentation">
+      <div
+        className="score-detail dryrun-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Dry-run 結果"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="score-detail__head">
+          <span className="score-detail__title">Dry-run 結果</span>
+          <button type="button" className="score-detail__close" onClick={onClose} aria-label="關閉">
+            ×
+          </button>
+        </header>
+        <div className="score-detail__body">
+          {result.errors?.length ? <MessageList title="Errors" items={result.errors} /> : null}
+          {result.warnings?.length ? <MessageList title="Warnings" items={result.warnings} /> : null}
+          {result.items?.length ? (
+            <table className="import-table">
+              <tbody>
+                {result.items.slice(0, 80).map((item, index) => (
+                  <tr key={`${item.base ?? item.name ?? index}`}>
+                    <td>{item.base ?? item.name ?? "-"}</td>
+                    <td>{item.status ?? "-"}</td>
+                    <td>{item.message ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

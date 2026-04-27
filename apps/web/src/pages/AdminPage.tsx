@@ -1,5 +1,5 @@
 import { Check, Download, GripVertical, Plus, RefreshCw, Save, Trash2, Upload } from "lucide-react";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
 import { confirmImport, dryRunImport, getImportProgress, getJudges, saveJudges } from "../api/client";
 import { onImportProgress } from "../api/socket";
 import type { ImportDryRunResult, ImportProgress, Judge } from "../types";
@@ -10,9 +10,15 @@ type JudgeDraft = {
   name: string;
 };
 
+const IMPORT_ACCEPT = ".csv,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+function isImportFile(file: File): boolean {
+  return /\.(csv|xlsx)$/i.test(file.name);
+}
+
 export function AdminPage() {
-  const [sourcePath, setSourcePath] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const [file, setFile] = useState<File | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const [dryRun, setDryRun] = useState<ImportDryRunResult | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [judges, setJudges] = useState<JudgeDraft[]>([]);
@@ -24,7 +30,7 @@ export function AdminPage() {
 
   const importId = dryRun?.importId ?? dryRun?.id;
   const canConfirm = Boolean(importId) && !busy;
-  const total = dryRun?.total ?? dryRun?.items?.length ?? files.length;
+  const total = dryRun?.total ?? dryRun?.items?.length ?? (file ? 1 : 0);
 
   useEffect(() => {
     return onImportProgress((next) => {
@@ -51,11 +57,32 @@ export function AdminPage() {
     return Math.round(((progress.done ?? 0) / progress.total) * 100);
   }, [progress]);
 
-  function selectFiles(event: ChangeEvent<HTMLInputElement>) {
-    setFiles(Array.from(event.target.files ?? []));
+  function acceptFile(next: File | null) {
+    setFile(next);
     setDryRun(null);
     setProgress(null);
-    setError(null);
+    setError(next && !isImportFile(next) ? "請選擇 CSV 或 Excel (.xlsx) 檔案。" : null);
+  }
+
+  function selectFile(event: ChangeEvent<HTMLInputElement>) {
+    acceptFile(event.target.files?.[0] ?? null);
+  }
+
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragActive(false);
+    const dropped = event.dataTransfer.files?.[0] ?? null;
+    if (dropped) acceptFile(dropped);
+  }
+
+  function handleDragOver(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragActive(true);
+  }
+
+  function handleDragLeave(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragActive(false);
   }
 
   async function refreshJudges() {
@@ -67,14 +94,18 @@ export function AdminPage() {
   }
 
   async function runDryRun() {
+    if (!file) return;
+    if (!isImportFile(file)) {
+      setError("請選擇 CSV 或 Excel (.xlsx) 檔案。");
+      return;
+    }
     setBusy(true);
     setError(null);
     setProgress(null);
     try {
       const form = new FormData();
-      form.set("sourcePath", sourcePath);
       form.set("dryRun", "true");
-      files.forEach((file) => form.append("files", file, file.webkitRelativePath || file.name));
+      form.append("files", file, file.name);
       setDryRun(await dryRunImport(form));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import dry-run failed");
@@ -149,7 +180,7 @@ export function AdminPage() {
         <div>
           <span className="mode-banner">Admin</span>
           <h1>Import photos</h1>
-          <p>Dry-run the selected folder, review warnings, then confirm the import.</p>
+          <p>選擇 CSV 或 Excel 檔案，先 dry-run 檢查欄位後再確認匯入。</p>
         </div>
       </section>
       <section className="admin-controls">
@@ -216,21 +247,23 @@ export function AdminPage() {
 
         <section className="admin-block">
           <h2>作品匯入</h2>
-        <label className="field-label">
-          Source path
-          <input value={sourcePath} onChange={(event) => setSourcePath(event.target.value)} placeholder="Optional server path" />
-        </label>
-        <label className="file-drop">
+        <label
+          className={`file-drop${dragActive ? " is-drag" : ""}`}
+          onDragEnter={handleDragOver}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
           <Upload size={22} />
-          <span>{files.length ? `${files.length} files selected` : "Select folder or files"}</span>
-          <input type="file" multiple onChange={selectFiles} {...{ webkitdirectory: "" }} />
+          <span>{file ? file.name : "選擇或拖曳 CSV / Excel 檔案"}</span>
+          <input type="file" accept={IMPORT_ACCEPT} onChange={selectFile} />
         </label>
         <div className="admin-actions">
           <button
             type="button"
             title="先檢查欄位與資料格式，不會真正下載檔案或寫入作品。"
             onClick={() => void runDryRun()}
-            disabled={busy || (!files.length && !sourcePath)}
+            disabled={busy || !file}
           >
             <RefreshCw size={18} />
             Dry run

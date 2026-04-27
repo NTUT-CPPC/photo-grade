@@ -931,6 +931,13 @@ button:disabled {
   border: 1px dashed #666666;
   border-radius: 6px;
   margin-bottom: 1rem;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.file-drop.is-drag {
+  border-color: #8ab4f8;
+  background: #2c3340;
+  color: #ffffff;
 }
 
 .file-drop input {

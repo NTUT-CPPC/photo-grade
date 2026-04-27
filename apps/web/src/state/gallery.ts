@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getIdx, getItems, getMode, getSheetRecords, setIdx, setMode } from "../api/client";
 import { emitIdx, emitMode, onSyncState } from "../api/socket";
 import type { Mode, PhotoItem, SheetRecord } from "../types";
@@ -90,6 +90,11 @@ export function useGallery(role: "host" | "score" | "view") {
   const current = visibleItems[Math.max(0, Math.min(idx, visibleItems.length - 1))];
   const realIdx = current ? sortedItems.findIndex((item) => item.base === current.base) : 0;
 
+  const lastModeRef = useRef<Mode>(mode);
+  useEffect(() => {
+    lastModeRef.current = mode;
+  }, [mode]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -121,9 +126,11 @@ export function useGallery(role: "host" | "score" | "view") {
 
   useEffect(() => {
     return onSyncState((state) => {
-      if (state.mode) {
+      if (state.mode && state.mode !== lastModeRef.current) {
+        lastModeRef.current = state.mode;
         setLocalMode(state.mode);
         setLocalIdx(0);
+        return;
       }
 
       if (state.idx == null && !state.base) return;

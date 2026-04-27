@@ -47,6 +47,30 @@ export function TwoPaneShell({
     if (!footer) setFooterHeight(0);
   }, [footer]);
 
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (target.isContentEditable) return;
+      }
+      if (event.key === "ArrowLeft") {
+        if (!canPrev) return;
+        event.preventDefault();
+        onPrev();
+      } else {
+        if (!canNext) return;
+        event.preventDefault();
+        onNext();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canPrev, canNext, onPrev, onNext]);
+
   const shellClass = `two-pane-shell${compactPhoto ? " two-pane-shell--compact-photo" : ""}`;
   const paneClass = `info-pane${footer ? " info-pane--with-footer" : ""}`;
   const paneStyle = footer

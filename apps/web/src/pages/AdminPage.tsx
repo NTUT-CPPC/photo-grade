@@ -377,6 +377,8 @@ export function AdminPage() {
                 onChange={selectFile}
               />
             </label>
+            {dryRunBusy ? <p className="system-note">Dry-run checking…</p> : null}
+            {dryRun ? <DryRunResult result={dryRun} total={total} /> : null}
             <div className="admin-actions">
               <button
                 type="button"
@@ -398,8 +400,6 @@ export function AdminPage() {
                 </button>
               ) : null}
             </div>
-            {dryRunBusy ? <p className="system-note">Dry-run checking…</p> : null}
-            {dryRun ? <DryRunResult result={dryRun} total={total} /> : null}
           </>
         )}
         {error ? <p className="system-note error">{error}</p> : null}

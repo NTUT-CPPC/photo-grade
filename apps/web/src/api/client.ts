@@ -53,12 +53,22 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new Error(`${response.status} ${response.statusText}`);
   }
 
-  if (response.status === 204 || options.allowEmpty) {
+  if (response.status === 204) {
     return undefined as T;
   }
 
   const text = await response.text();
-  return text ? (JSON.parse(text) as T) : (undefined as T);
+  if (!text) {
+    return undefined as T;
+  }
+  if (options.allowEmpty) {
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      return undefined as T;
+    }
+  }
+  return JSON.parse(text) as T;
 }
 
 async function firstOk<T>(paths: string[], options?: RequestOptions): Promise<T> {

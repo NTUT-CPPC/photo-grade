@@ -40,6 +40,33 @@ export async function processMediaForWork(workId: string, code: string, sourceUr
   console.log(`[media] ${code} done in ${Date.now() - t0}ms`);
 }
 
+export async function regenerateSidecarMetadata(): Promise<{ updated: number; skipped: number }> {
+  const works = await prisma.work.findMany({ include: { assets: true } });
+  let updated = 0;
+  let skipped = 0;
+  for (const work of works) {
+    const original = work.assets.find((a) => a.kind === "original");
+    if (!original) {
+      skipped += 1;
+      continue;
+    }
+    let rawExif: Record<string, unknown> | null = null;
+    try {
+      rawExif = (await exiftool.read(original.path)) as unknown as Record<string, unknown>;
+    } catch (err) {
+      console.warn(`[media] regen ${work.code} exiftool failed: ${(err as Error).message}`);
+    }
+    const sidecar = buildSidecarJson(work, rawExif);
+    const sidecarPath = assertInsideDataDir(path.join(dataDirs.originals, `${safeFileName(work.code)}.json`));
+    const payload = JSON.stringify(sidecar, null, 2);
+    await fs.writeFile(sidecarPath, payload, "utf8");
+    await upsertAsset(work.id, "metadata", sidecarPath, "application/json", Buffer.byteLength(payload));
+    updated += 1;
+  }
+  console.log(`[media] regen sidecar metadata done updated=${updated} skipped=${skipped}`);
+  return { updated, skipped };
+}
+
 type WorkRecord = Awaited<ReturnType<typeof prisma.work.findUnique>>;
 
 function buildSidecarJson(work: WorkRecord, exif: Record<string, unknown> | null) {

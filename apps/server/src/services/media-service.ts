@@ -14,14 +14,11 @@ export async function processMediaForWork(workId: string, code: string, sourceUr
   let downloaded = await downloadPublicFile(sourceUrl, code);
   console.log(`[media] ${code} downloaded ${(downloaded.size / 1024).toFixed(0)}KB mime=${downloaded.mime} in ${Date.now() - t0}ms`);
 
-  const metadataPath = assertInsideDataDir(path.join(dataDirs.metadata, `${safeFileName(code)}.json`));
-  let metadataPayload: string;
+  let rawExif: Record<string, unknown> | null = null;
   try {
-    const metadata = await exiftool.read(downloaded.path);
-    metadataPayload = JSON.stringify(metadata, null, 2);
+    rawExif = (await exiftool.read(downloaded.path)) as unknown as Record<string, unknown>;
   } catch (err) {
     console.warn(`[media] ${code} exiftool failed: ${(err as Error).message}`);
-    metadataPayload = JSON.stringify({ error: String(err) }, null, 2);
   }
 
   if (isHeicAsset(downloaded.path, downloaded.mime)) {
@@ -30,12 +27,113 @@ export async function processMediaForWork(workId: string, code: string, sourceUr
   }
 
   await upsertAsset(workId, "original", downloaded.path, downloaded.mime, downloaded.size);
-  await fs.writeFile(metadataPath, metadataPayload, "utf8");
-  await upsertAsset(workId, "metadata", metadataPath, "application/json", Buffer.byteLength(metadataPayload));
+
+  const work = await prisma.work.findUnique({ where: { id: workId } });
+  const sidecar = buildSidecarJson(work, rawExif);
+  const sidecarPath = assertInsideDataDir(path.join(dataDirs.originals, `${safeFileName(code)}.json`));
+  const sidecarPayload = JSON.stringify(sidecar, null, 2);
+  await fs.writeFile(sidecarPath, sidecarPayload, "utf8");
+  await upsertAsset(workId, "metadata", sidecarPath, "application/json", Buffer.byteLength(sidecarPayload));
 
   await createDerivative(workId, code, downloaded.path, "preview", dataDirs.previews, 2160, 85);
   await createDerivative(workId, code, downloaded.path, "thumbnail", dataDirs.thumbnails, 900, 78);
   console.log(`[media] ${code} done in ${Date.now() - t0}ms`);
+}
+
+type WorkRecord = Awaited<ReturnType<typeof prisma.work.findUnique>>;
+
+function buildSidecarJson(work: WorkRecord, exif: Record<string, unknown> | null) {
+  const info = deriveExifInfo(exif);
+  const concept = {
+    title: work?.title ?? null,
+    description: work?.description ?? null
+  };
+  const priv = {
+    timestamp: work?.createdAt?.toISOString() ?? null,
+    school: work?.school ?? null,
+    department: work?.department ?? null,
+    ID: work?.studentId ?? null,
+    author: work?.author ?? null,
+    email: work?.email ?? null
+  };
+  return { private: priv, concept, info };
+}
+
+function deriveExifInfo(exif: Record<string, unknown> | null) {
+  if (!exif) {
+    return {
+      shutter: null,
+      aparture: null,
+      ISO: null,
+      megapixel: null,
+      camera: null,
+      lens: null,
+      focal_length: null
+    };
+  }
+  return {
+    shutter: formatShutter(exif.ExposureTime ?? exif.ShutterSpeed ?? exif.ShutterSpeedValue),
+    aparture: formatAperture(exif.FNumber ?? exif.ApertureValue),
+    ISO: stringOrNull(exif.ISO ?? exif.ISOSpeedRatings),
+    megapixel: computeMegapixel(exif),
+    camera: stringOrNull(exif.Model),
+    lens: stringOrNull(exif.LensModel ?? exif.Lens ?? exif.LensID),
+    focal_length: formatFocalLength(exif.FocalLength)
+  };
+}
+
+function formatShutter(raw: unknown): string | null {
+  if (raw == null) return null;
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw) || raw <= 0) return null;
+    if (raw >= 1) return `${Number(raw.toFixed(2))}s`;
+    return `1/${Math.round(1 / raw)}`;
+  }
+  return String(raw).trim() || null;
+}
+
+function formatAperture(raw: unknown): string | null {
+  if (raw == null) return null;
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) return null;
+    return `f/${Number(raw.toFixed(2))}`;
+  }
+  const str = String(raw).trim();
+  if (!str) return null;
+  return /^[fF]\//.test(str) ? str : `f/${str}`;
+}
+
+function formatFocalLength(raw: unknown): string | null {
+  if (raw == null) return null;
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) return null;
+    return `${Number(raw.toFixed(2))}mm`;
+  }
+  const str = String(raw).trim();
+  if (!str) return null;
+  return /mm$/i.test(str) ? str : `${str}mm`;
+}
+
+function stringOrNull(raw: unknown): string | null {
+  if (raw == null) return null;
+  const str = String(raw).trim();
+  return str === "" ? null : str;
+}
+
+function computeMegapixel(exif: Record<string, unknown>): number | null {
+  const w = numberOrNull(exif.ImageWidth ?? exif.ExifImageWidth);
+  const h = numberOrNull(exif.ImageHeight ?? exif.ExifImageHeight);
+  if (w == null || h == null) return null;
+  return Math.round((w * h) / 1e4) / 100;
+}
+
+function numberOrNull(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "string") {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 async function downloadPublicFile(sourceUrl: string, code: string): Promise<{ path: string; mime: string; size: number }> {

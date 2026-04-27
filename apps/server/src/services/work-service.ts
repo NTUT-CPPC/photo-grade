@@ -29,13 +29,18 @@ export async function listWorks(mode: JudgingMode = "initial"): Promise<WorkSumm
 
 async function toSummary(work: Awaited<ReturnType<typeof prisma.work.findMany>>[number] & { assets: Array<{ kind: string; path: string }> }): Promise<WorkSummary> {
   const assets: WorkSummary["assets"] = {};
+  let metadataAssetPath: string | null = null;
   for (const asset of work.assets) {
     const filename = path.basename(asset.path);
     if (asset.kind === "original") assets.original = publicAssetUrl("originals", filename);
     if (asset.kind === "preview") assets.preview = publicAssetUrl("previews", filename);
     if (asset.kind === "thumbnail") assets.thumbnail = publicAssetUrl("thumbnails", filename);
-    if (asset.kind === "metadata") assets.metadata = `/api/works/${work.id}/metadata`;
+    if (asset.kind === "metadata") {
+      assets.metadata = `/api/works/${work.id}/metadata`;
+      metadataAssetPath = asset.path;
+    }
   }
+  const metadata = metadataAssetPath ? await readPublicMetadata(metadataAssetPath) : null;
   return {
     id: work.id,
     code: work.code,
@@ -47,8 +52,23 @@ async function toSummary(work: Awaited<ReturnType<typeof prisma.work.findMany>>[
     sourceUrl: work.sourceUrl,
     initialPassed: work.initialPassed,
     secondaryTotal: work.secondaryTotal,
-    assets
+    assets,
+    metadata
   };
+}
+
+async function readPublicMetadata(absPath: string): Promise<Record<string, unknown> | null> {
+  if (!absPath.startsWith(dataDirs.root)) return null;
+  try {
+    const raw = await fs.readFile(absPath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      concept: parsed.concept ?? null,
+      info: parsed.info ?? null
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function metadataForWork(workId: string): Promise<unknown> {

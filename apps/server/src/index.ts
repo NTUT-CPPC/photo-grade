@@ -51,9 +51,12 @@ app.get("/api/runtime-config", (_req, res) =>
   })
 );
 
+const MEDIA_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif", ".tif", ".tiff", ".bmp"]);
 app.use("/media/:kind/:file", (req, res) => {
   const kind = req.params.kind;
   if (!["originals", "previews", "thumbnails"].includes(kind)) return res.status(404).send("Not found");
+  const ext = path.extname(req.params.file).toLowerCase();
+  if (!MEDIA_IMAGE_EXTENSIONS.has(ext)) return res.status(404).send("Not found");
   const dir = dataDirs[kind as "originals" | "previews" | "thumbnails"];
   const filePath = assertInsideDataDir(path.join(dir, req.params.file));
   if (!fs.existsSync(filePath)) return res.status(404).send("Not found");
@@ -72,14 +75,19 @@ app.get("/api/items", async (req, res, next) => {
   try {
     const works = await listWorks(req.query.mode as never);
     res.json({
-      items: works.map((work) => ({
-        base: work.code,
-        imageUrl: work.assets.preview ?? work.assets.original,
-        thumbnailUrl: work.assets.thumbnail,
-        high: work.assets.preview ?? work.assets.original,
-        mini: work.assets.thumbnail,
-        concept: { title: work.title, description: work.description }
-      }))
+      items: works.map((work) => {
+        const concept = (work.metadata?.concept as { title?: string; description?: string } | null) ?? null;
+        const info = (work.metadata?.info as Record<string, unknown> | null) ?? null;
+        return {
+          base: work.code,
+          imageUrl: work.assets.preview ?? work.assets.original,
+          thumbnailUrl: work.assets.thumbnail,
+          high: work.assets.preview ?? work.assets.original,
+          mini: work.assets.thumbnail,
+          concept: { title: concept?.title ?? work.title, description: concept?.description ?? work.description },
+          info
+        };
+      })
     });
   } catch (error) {
     next(error);

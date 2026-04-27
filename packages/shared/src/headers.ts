@@ -1,5 +1,12 @@
 import type { ImportDryRun, ImportIssue, NormalizedWorkInput } from "./types.js";
 
+const UNTITLED_FALLBACK = "無標題";
+const WORK_LABELS: Record<"1" | "2" | "direct", string> = {
+  "1": "作品一",
+  "2": "作品二",
+  direct: "作品"
+};
+
 export const HEADER_ALIASES: Record<string, string[]> = {
   code: ["編號", "编号", "投稿編號", "投稿编号", "作品編號", "作品编号", "ID", "id", "asset id", "asset_id", "entry id", "entry_id", "submission id", "submission_id"],
   title: ["作品名稱", "作品名称", "Title", "title", "name"],
@@ -42,6 +49,7 @@ export function validateHeaders(headers: string[]): ImportIssue[] {
     issues.push({
       row: 1,
       field: "headers",
+      severity: "error",
       message: `缺少必要欄位：需提供 ${DIRECT_REQUIRED_KEYS.map(labelForKey).join(" / ")}，或 ${LEGACY_REQUIRED_KEYS.map(labelForKey).join(" / ")}`
     });
   }
@@ -68,22 +76,24 @@ export function normalizeRows(rows: Record<string, unknown>[]): ImportDryRun {
 
     if (directSourceUrl) {
       const code = workCode(submissionCode, "a");
-      const title = valueFor(row, "title");
+      const rawTitle = valueFor(row, "title");
       const description = valueFor(row, "description");
-      validateWork(rowNumber, code, title, directSourceUrl, seen, issues);
-      if (title && directSourceUrl) works.push({ code, title, description, sourceUrl: directSourceUrl, ...base });
+      const resolvedTitle = validateWork(rowNumber, code, rawTitle, directSourceUrl, "direct", seen, issues);
+      if (resolvedTitle != null) {
+        works.push({ code, title: resolvedTitle, description, sourceUrl: directSourceUrl, ...base });
+      }
       return;
     }
 
     for (const [suffix, postfix] of [["1", "a"], ["2", "b"]] as const) {
-      const title = valueFor(row, `work${suffix}Title`);
+      const rawTitle = valueFor(row, `work${suffix}Title`);
       const sourceUrl = valueFor(row, `work${suffix}File`);
       const description = valueFor(row, `work${suffix}Description`);
-      if (!sourceUrl && suffix === "2") continue;
+      if (!sourceUrl && suffix === "2" && !rawTitle) continue;
       const code = workCode(submissionCode, postfix);
-      validateWork(rowNumber, code, title, sourceUrl, seen, issues);
-      if (!title || !sourceUrl) continue;
-      works.push({ code, title, description, sourceUrl, ...base });
+      const resolvedTitle = validateWork(rowNumber, code, rawTitle, sourceUrl, suffix, seen, issues);
+      if (resolvedTitle == null) continue;
+      works.push({ code, title: resolvedTitle, description, sourceUrl, ...base });
     }
   });
 
@@ -159,26 +169,42 @@ function workCode(submissionCode: string, postfix: "a" | "b"): string {
   return `${submissionCode}${postfix}`;
 }
 
-function validateWork(row: number, code: string, title: string, sourceUrl: string, seen: Set<string>, issues: ImportIssue[]): void {
-  if (!title || !sourceUrl) {
-    issues.push({ row, field: "作品", message: "作品名稱與檔案連結皆為必要" });
-    return;
+function validateWork(
+  row: number,
+  code: string,
+  title: string,
+  sourceUrl: string,
+  workKey: "1" | "2" | "direct",
+  seen: Set<string>,
+  issues: ImportIssue[]
+): string | null {
+  const label = WORK_LABELS[workKey];
+  if (!sourceUrl) {
+    issues.push({ row, field: label, severity: "error", message: `${label} 缺少檔案連結，將略過此筆` });
+    return null;
+  }
+  const resolvedTitle = title || UNTITLED_FALLBACK;
+  if (!title) {
+    issues.push({ row, field: label, severity: "warning", message: `${label} 沒有名稱，將以「${UNTITLED_FALLBACK}」匯入` });
   }
   if (!code) {
-    issues.push({ row, field: "作品編號", message: "作品編號不可為空" });
+    issues.push({ row, field: "作品編號", severity: "error", message: `${label} 作品編號不可為空` });
   } else if (seen.has(code)) {
-    issues.push({ row, field: "作品編號", message: `重複作品編號 ${code}` });
+    issues.push({ row, field: "作品編號", severity: "error", message: `${label} 重複作品編號 ${code}` });
   }
   seen.add(code);
 
   try {
     const parsed = new URL(sourceUrl);
     if (!["http:", "https:"].includes(parsed.protocol)) {
-      issues.push({ row, field: "sourceUrl", message: "檔案連結必須使用 http 或 https" });
+      issues.push({ row, field: "sourceUrl", severity: "error", message: `${label} 檔案連結必須使用 http 或 https` });
+      return null;
     }
   } catch {
-    issues.push({ row, field: "sourceUrl", message: `檔案連結格式錯誤：${sourceUrl}` });
+    issues.push({ row, field: "sourceUrl", severity: "error", message: `${label} 檔案連結格式錯誤：${sourceUrl}` });
+    return null;
   }
+  return resolvedTitle;
 }
 
 function labelForKey(key: string): string {

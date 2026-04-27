@@ -67,6 +67,33 @@ describe("shared rules", () => {
   it("reports missing required import header alternatives", () => {
     expect(validateHeaders(["author", "email"])[0].field).toBe("headers");
   });
+
+  it("warns when work has a file but missing title and uses 無標題 fallback", () => {
+    const dryRun = normalizeRows([
+      { 編號: "5", "作品1 名稱": "", "作品1 檔案": "https://example.com/a.jpg" }
+    ]);
+    expect(dryRun.works).toHaveLength(1);
+    expect(dryRun.works[0].title).toBe("無標題");
+    expect(dryRun.issues).toHaveLength(1);
+    expect(dryRun.issues[0].severity).toBe("warning");
+    expect(dryRun.issues[0].message).toContain("作品一");
+  });
+
+  it("errors when work has a title but missing file and skips that work", () => {
+    const dryRun = normalizeRows([
+      {
+        編號: "6",
+        "作品1 名稱": "A",
+        "作品1 檔案": "https://example.com/a.jpg",
+        "作品2 名稱": "B",
+        "作品2 檔案": ""
+      }
+    ]);
+    expect(dryRun.works.map((w) => w.code)).toEqual(["6a"]);
+    expect(dryRun.issues).toHaveLength(1);
+    expect(dryRun.issues[0].severity).toBe("error");
+    expect(dryRun.issues[0].message).toContain("作品二");
+  });
 });
 
 describe("storage guard", () => {

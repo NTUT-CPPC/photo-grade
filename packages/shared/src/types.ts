@@ -45,10 +45,13 @@ export interface ScoreChangedPayload {
   submittedAt: string;
 }
 
+export type ImportIssueSeverity = "warning" | "error";
+
 export interface ImportIssue {
   row: number;
   field: string;
   message: string;
+  severity: ImportIssueSeverity;
 }
 
 export interface NormalizedWorkInput {

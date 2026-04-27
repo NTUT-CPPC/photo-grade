@@ -53,11 +53,12 @@ export async function processImportBatch(
     data: { status: "PROCESSING", error: null, processedCount: 0, totalCount: total }
   });
 
-  if (dryRun.issues.length) {
-    console.warn(`[import] batchId=${batchId} aborting — dry-run issues: ${dryRun.issues.length}`);
+  const blockingIssues = dryRun.issues.filter((issue) => (issue.severity ?? "error") === "error");
+  if (blockingIssues.length) {
+    console.warn(`[import] batchId=${batchId} aborting — dry-run errors: ${blockingIssues.length}`);
     await prisma.importBatch.update({
       where: { id: batchId },
-      data: { status: "FAILED", error: "Dry-run still contains issues." }
+      data: { status: "FAILED", error: "Dry-run still contains errors." }
     });
     return;
   }

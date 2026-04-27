@@ -998,19 +998,6 @@ button:disabled {
   gap: 0.45rem;
   width: 100%;
   margin-bottom: 1rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.import-stats:focus-visible {
-  outline: 2px solid #ffca28;
-  outline-offset: 2px;
-  border-radius: 4px;
 }
 
 .import-stats span {
@@ -1019,19 +1006,24 @@ button:disabled {
   padding: 0.55rem;
   text-align: center;
   color: #d8d8d8;
-  transition: background 0.15s ease;
-}
-
-.import-stats:hover span {
-  background: #303030;
-}
-
-.dryrun-detail {
-  width: min(40rem, 100%);
 }
 
 .message-list {
   margin-bottom: 1rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  border-left: 3px solid #ffca28;
+  background: rgba(255, 202, 40, 0.08);
+}
+
+.message-list--error {
+  border-left-color: #ef5350;
+  background: rgba(239, 83, 80, 0.1);
+}
+
+.message-list--warning {
+  border-left-color: #ffca28;
+  background: rgba(255, 202, 40, 0.08);
 }
 
 .message-list h3 {
@@ -1040,9 +1032,30 @@ button:disabled {
   color: #ffca28;
 }
 
+.message-list--error h3 {
+  color: #ef9a9a;
+}
+
 .message-list p {
   margin: 0.25rem 0;
   color: #dcdcdc;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.dryrun-items h3 {
+  margin: 0.5rem 0 0.4rem;
+  font-size: 0.95rem;
+  color: #d8d8d8;
+}
+
+.dryrun-items .import-table th {
+  text-align: left;
+  font-size: 0.82rem;
+  color: #aaaaaa;
+  font-weight: 600;
+  padding: 0.42rem;
+  border-bottom: 1px solid #333333;
 }
 
 .progress-meta {

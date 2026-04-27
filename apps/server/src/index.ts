@@ -22,6 +22,7 @@ import {
 } from "./services/import-service.js";
 import { importTemplateCsvBuffer, importTemplateXlsxBuffer } from "./services/import-template-service.js";
 import { addJudge, deleteJudge, listJudges, replaceJudges } from "./services/judge-service.js";
+import { regenerateSidecarMetadata } from "./services/media-service.js";
 import { listWorks, metadataForWork } from "./services/work-service.js";
 import { processSheetSync } from "./services/sheet-service.js";
 import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
@@ -331,6 +332,15 @@ app.get("/api/admin/imports", requireAuth(), async (_req, res, next) => {
 app.use(scoreRoutes);
 app.use(stateRoutes);
 
+app.post("/api/admin/metadata/regenerate", requireAuth(), async (_req, res, next) => {
+  try {
+    const result = await regenerateSidecarMetadata();
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post("/api/sheet-sync/drain", requireAuth(), async (_req, res, next) => {
   try {
     await processSheetSync();
@@ -382,14 +392,24 @@ function staticWeb() {
   ];
 }
 
-function toDryRunResponse(id: string, dryRun: { totalRows: number; works: Array<{ code: string; title: string }>; issues: Array<{ row: number; field: string; message: string }> }) {
+function toDryRunResponse(
+  id: string,
+  dryRun: {
+    totalRows: number;
+    works: Array<{ code: string; title: string }>;
+    issues: Array<{ row: number; field: string; message: string; severity?: "warning" | "error" }>;
+  }
+) {
+  const format = (issue: { row: number; message: string }) => `列 ${issue.row}：${issue.message}`;
+  const errors = dryRun.issues.filter((i) => (i.severity ?? "error") === "error").map(format);
+  const warnings = dryRun.issues.filter((i) => i.severity === "warning").map(format);
   return {
     id,
     importId: id,
     total: dryRun.totalRows,
     valid: dryRun.works.length,
-    warnings: [] as string[],
-    errors: dryRun.issues.map((issue) => `Row ${issue.row} ${issue.field}: ${issue.message}`),
+    warnings,
+    errors,
     items: dryRun.works.map((work) => ({ base: work.code, name: work.title, status: "ready" }))
   };
 }

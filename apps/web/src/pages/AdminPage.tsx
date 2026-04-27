@@ -462,78 +462,53 @@ function formatRelativeTime(iso: string): string {
 }
 
 function DryRunResult({ result, total }: { result: ImportDryRunResult; total: number }) {
-  const [open, setOpen] = useState(false);
+  const errors = result.errors ?? [];
+  const warnings = result.warnings ?? [];
+  const items = result.items ?? [];
   return (
     <div className="dryrun-panel">
       <h2>Dry-run result</h2>
-      <button
-        type="button"
-        className="import-stats"
-        onClick={() => setOpen(true)}
-        aria-label="顯示完整 dry-run 結果"
-      >
+      <div className="import-stats" role="group" aria-label="Dry-run 摘要">
         <span>Total {total ?? "-"}</span>
         <span>Valid {result.valid ?? "-"}</span>
-        <span>Warnings {result.warnings?.length ?? 0}</span>
-        <span>Errors {result.errors?.length ?? 0}</span>
-      </button>
-      {open ? <DryRunDetailDialog result={result} onClose={() => setOpen(false)} /> : null}
-    </div>
-  );
-}
-
-function DryRunDetailDialog({ result, onClose }: { result: ImportDryRunResult; onClose: () => void }) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div className="score-detail-backdrop" onClick={onClose} role="presentation">
-      <div
-        className="score-detail dryrun-detail"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Dry-run 結果"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="score-detail__head">
-          <span className="score-detail__title">Dry-run 結果</span>
-          <button type="button" className="score-detail__close" onClick={onClose} aria-label="關閉">
-            ×
-          </button>
-        </header>
-        <div className="score-detail__body">
-          {result.errors?.length ? <MessageList title="Errors" items={result.errors} /> : null}
-          {result.warnings?.length ? <MessageList title="Warnings" items={result.warnings} /> : null}
-          {result.items?.length ? (
-            <table className="import-table">
-              <tbody>
-                {result.items.slice(0, 80).map((item, index) => (
-                  <tr key={`${item.base ?? item.name ?? index}`}>
-                    <td>{item.base ?? item.name ?? "-"}</td>
-                    <td>{item.status ?? "-"}</td>
-                    <td>{item.message ?? ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : null}
-        </div>
+        <span>Warnings {warnings.length}</span>
+        <span>Errors {errors.length}</span>
       </div>
+      {errors.length ? <MessageList title={`錯誤 (${errors.length})`} severity="error" items={errors} /> : null}
+      {warnings.length ? <MessageList title={`警告 (${warnings.length})`} severity="warning" items={warnings} /> : null}
+      {items.length ? (
+        <div className="dryrun-items">
+          <h3>作品列表 ({items.length})</h3>
+          <table className="import-table">
+            <thead>
+              <tr>
+                <th>代碼</th>
+                <th>名稱</th>
+                <th>狀態</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr key={`${item.base ?? item.name ?? index}`}>
+                  <td>{item.base ?? "-"}</td>
+                  <td>{item.name ?? "-"}</td>
+                  <td>{item.status ?? "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function MessageList({ title, items }: { title: string; items: string[] }) {
+function MessageList({ title, severity, items }: { title: string; severity: "warning" | "error"; items: string[] }) {
   return (
-    <div className="message-list">
+    <div className={`message-list message-list--${severity}`}>
       <h3>{title}</h3>
-      {items.map((item) => (
-        <p key={item}>{item}</p>
+      {items.map((item, index) => (
+        <p key={`${index}-${item}`}>{item}</p>
       ))}
     </div>
   );

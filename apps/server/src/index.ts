@@ -8,7 +8,7 @@ import multer from "multer";
 import { env } from "./env.js";
 import { requireAuth } from "./auth.js";
 import { closeSession, sessionMiddleware } from "./session.js";
-import { enqueueImport } from "./queue.js";
+import { enqueueImport, queue } from "./queue.js";
 import { attachRealtime } from "./realtime.js";
 import { authRoutes } from "./routes/auth-routes.js";
 import { scoreRoutes } from "./routes/score-routes.js";
@@ -150,7 +150,9 @@ app.post(["/api/admin/import/dry-run", "/api/admin/imports/dry-run"], requireAut
       res.status(400).json({ error: "Missing CSV/XLSX file." });
       return;
     }
+    console.log(`[admin] dry-run upload originalName=${file.originalname} size=${file.size}`);
     const result = await createImportBatch(file.originalname, file.path);
+    console.log(`[admin] dry-run created batchId=${result.id} works=${result.dryRun.works.length} issues=${result.dryRun.issues.length}`);
     res.json(toDryRunResponse(result.id, result.dryRun));
   } catch (error) {
     next(error);
@@ -161,9 +163,30 @@ app.post(["/api/admin/import/confirm", "/api/admin/imports/:id/confirm"], requir
   try {
     const importId = firstString(req.params.id) ?? firstString(req.body?.importId) ?? firstString(req.body?.id);
     if (!importId) throw new Error("importId is required.");
-    await prisma.importBatch.update({ where: { id: importId }, data: { status: "QUEUED", error: null } });
+    console.log(`[admin] confirm import importId=${importId}`);
+    await prisma.importBatch.update({
+      where: { id: importId },
+      data: { status: "QUEUED", error: null, processedCount: 0 }
+    });
     await enqueueImport(importId);
-    res.status(202).json({ importId, status: "running", phase: "queued", done: 0, total: 1, message: "Import queued." });
+    let workerOnline: boolean | undefined;
+    try {
+      workerOnline = (await queue.getWorkers()).length > 0;
+    } catch {
+      workerOnline = undefined;
+    }
+    res.status(202).json({
+      importId,
+      status: workerOnline === false ? "error" : "running",
+      phase: "queued",
+      done: 0,
+      total: 1,
+      message:
+        workerOnline === false
+          ? "Worker offline — no BullMQ worker is listening on the queue. Start the worker container (`docker compose up -d worker`)."
+          : "Import queued.",
+      workerOnline
+    });
   } catch (error) {
     next(error);
   }
@@ -175,14 +198,33 @@ app.get(["/api/admin/import/progress/:id", "/api/admin/imports/:id"], requireAut
     if (!id) throw new Error("importId is required.");
     const batch = await prisma.importBatch.findUniqueOrThrow({ where: { id } });
     const dryRun = batch.dryRunJson as { works?: unknown[] };
-    const total = dryRun.works?.length ?? 0;
+    const total = batch.totalCount || dryRun.works?.length || 0;
+    const done =
+      batch.status === "COMPLETED" ? total : batch.status === "PROCESSING" ? batch.processedCount : 0;
+    let workerOnline: boolean | undefined;
+    let message = batch.error ?? `${batch.status} ${done}/${total}`;
+    let status: "complete" | "error" | "running" =
+      batch.status === "COMPLETED" ? "complete" : batch.status === "FAILED" ? "error" : "running";
+    if (batch.status === "QUEUED") {
+      try {
+        const workers = await queue.getWorkers();
+        workerOnline = workers.length > 0;
+        if (!workerOnline) {
+          status = "error";
+          message = "Worker offline — no BullMQ worker is listening on the queue. Start the worker container (`docker compose up -d worker`).";
+        }
+      } catch {
+        workerOnline = undefined;
+      }
+    }
     res.json({
       importId: batch.id,
-      status: batch.status === "COMPLETED" ? "complete" : batch.status === "FAILED" ? "error" : "running",
+      status,
       phase: batch.status,
-      done: batch.status === "COMPLETED" ? total : 0,
+      done,
       total,
-      message: batch.error ?? batch.status
+      message,
+      workerOnline
     });
   } catch (error) {
     next(error);

@@ -9,7 +9,10 @@ import { assertInsideDataDir, dataDirs, safeFileName } from "../storage.js";
 import { env } from "../env.js";
 
 export async function processMediaForWork(workId: string, code: string, sourceUrl: string): Promise<void> {
+  console.log(`[media] ${code} download start url=${sourceUrl}`);
+  const t0 = Date.now();
   let downloaded = await downloadPublicFile(sourceUrl, code);
+  console.log(`[media] ${code} downloaded ${(downloaded.size / 1024).toFixed(0)}KB mime=${downloaded.mime} in ${Date.now() - t0}ms`);
 
   const metadataPath = assertInsideDataDir(path.join(dataDirs.metadata, `${safeFileName(code)}.json`));
   let metadataPayload: string;
@@ -17,10 +20,12 @@ export async function processMediaForWork(workId: string, code: string, sourceUr
     const metadata = await exiftool.read(downloaded.path);
     metadataPayload = JSON.stringify(metadata, null, 2);
   } catch (err) {
+    console.warn(`[media] ${code} exiftool failed: ${(err as Error).message}`);
     metadataPayload = JSON.stringify({ error: String(err) }, null, 2);
   }
 
   if (isHeicAsset(downloaded.path, downloaded.mime)) {
+    console.log(`[media] ${code} converting HEIC -> JPEG`);
     downloaded = await convertHeicToJpeg(downloaded.path, code);
   }
 
@@ -30,6 +35,7 @@ export async function processMediaForWork(workId: string, code: string, sourceUr
 
   await createDerivative(workId, code, downloaded.path, "preview", dataDirs.previews, 2160, 85);
   await createDerivative(workId, code, downloaded.path, "thumbnail", dataDirs.thumbnails, 900, 78);
+  console.log(`[media] ${code} done in ${Date.now() - t0}ms`);
 }
 
 async function downloadPublicFile(sourceUrl: string, code: string): Promise<{ path: string; mime: string; size: number }> {

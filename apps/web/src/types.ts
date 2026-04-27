@@ -82,6 +82,7 @@ export type ImportProgress = {
   total?: number;
   message?: string;
   status?: "idle" | "running" | "complete" | "error";
+  workerOnline?: boolean;
 };
 
 export type Judge = {

@@ -39,14 +39,16 @@ export function AdminPage() {
   }, [importId]);
 
   useEffect(() => {
-    if (!importId || progress?.status === "complete" || progress?.status === "error") return;
+    if (!importId) return;
+    if (progress?.status === "complete") return;
+    if (progress?.status === "error" && progress?.workerOnline !== false) return;
     const timer = window.setInterval(() => {
       getImportProgress(importId)
         .then(setProgress)
         .catch(() => undefined);
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [importId, progress?.status]);
+  }, [importId, progress?.status, progress?.workerOnline]);
 
   useEffect(() => {
     void refreshJudges();
@@ -284,12 +286,20 @@ export function AdminPage() {
           <div className="progress-panel">
             <div className="progress-head">
               <span>{progress.phase ?? progress.status ?? "Import"}</span>
-              <span>{progressPercent}%</span>
+              <span>
+                {progress.done ?? 0} / {progress.total ?? 0}
+                {progress.total ? ` · ${progressPercent}%` : null}
+              </span>
             </div>
             <div className="progress-bar">
               <span style={{ width: `${progressPercent}%` }} />
             </div>
-            <p>{progress.message ?? `${progress.done ?? 0}/${progress.total ?? 0}`}</p>
+            {progress.message ? <p>{progress.message}</p> : null}
+            {progress.workerOnline === false ? (
+              <p className="system-note error">
+                Worker 容器沒在跑，匯入工作不會被處理。請執行 <code>docker compose up -d worker</code>，啟動後本頁會自動恢復。
+              </p>
+            ) : null}
           </div>
         ) : null}
         </section>

@@ -32,49 +32,73 @@ export async function createImportBatch(originalName: string, tempPath: string):
   return { id: batch.id, dryRun };
 }
 
-export async function processImportBatch(batchId: string, onProgress?: (message: string) => void): Promise<void> {
+export async function processImportBatch(
+  batchId: string,
+  onProgress?: (message: string, processedCount: number) => void | Promise<void>
+): Promise<void> {
+  console.log(`[import] start batchId=${batchId}`);
   const batch = await prisma.importBatch.findUniqueOrThrow({ where: { id: batchId } });
-  await prisma.importBatch.update({ where: { id: batchId }, data: { status: "PROCESSING", error: null } });
   const dryRun = batch.dryRunJson as unknown as ImportDryRun;
+  const total = dryRun.works.length;
+  console.log(`[import] batchId=${batchId} total=${total} fileName=${batch.fileName}`);
+
+  await prisma.importBatch.update({
+    where: { id: batchId },
+    data: { status: "PROCESSING", error: null, processedCount: 0, totalCount: total }
+  });
+
   if (dryRun.issues.length) {
-    await prisma.importBatch.update({ where: { id: batchId }, data: { status: "FAILED", error: "Dry-run still contains issues." } });
+    console.warn(`[import] batchId=${batchId} aborting — dry-run issues: ${dryRun.issues.length}`);
+    await prisma.importBatch.update({
+      where: { id: batchId },
+      data: { status: "FAILED", error: "Dry-run still contains issues." }
+    });
     return;
   }
 
   const { processMediaForWork } = await import("./media-service.js");
   let processed = 0;
   for (const work of dryRun.works) {
-    onProgress?.(`Processing ${work.code}`);
-    const record = await prisma.work.upsert({
-      where: { code: work.code },
-      update: {
-        title: work.title,
-        description: work.description,
-        author: work.author,
-        school: work.school,
-        department: work.department,
-        studentId: work.studentId,
-        email: work.email,
-        sourceUrl: work.sourceUrl
-      },
-      create: {
-        code: work.code,
-        title: work.title,
-        description: work.description,
-        author: work.author,
-        school: work.school,
-        department: work.department,
-        studentId: work.studentId,
-        email: work.email,
-        sourceUrl: work.sourceUrl
-      }
-    });
-    await processMediaForWork(record.id, work.code, work.sourceUrl);
-    processed += 1;
-    onProgress?.(`Processed ${processed}/${dryRun.works.length}`);
+    console.log(`[import] (${processed + 1}/${total}) work.code=${work.code} title=${work.title}`);
+    await onProgress?.(`Processing ${work.code}`, processed);
+    try {
+      const record = await prisma.work.upsert({
+        where: { code: work.code },
+        update: {
+          title: work.title,
+          description: work.description,
+          author: work.author,
+          school: work.school,
+          department: work.department,
+          studentId: work.studentId,
+          email: work.email,
+          sourceUrl: work.sourceUrl
+        },
+        create: {
+          code: work.code,
+          title: work.title,
+          description: work.description,
+          author: work.author,
+          school: work.school,
+          department: work.department,
+          studentId: work.studentId,
+          email: work.email,
+          sourceUrl: work.sourceUrl
+        }
+      });
+      await processMediaForWork(record.id, work.code, work.sourceUrl);
+      processed += 1;
+      await prisma.importBatch.update({ where: { id: batchId }, data: { processedCount: processed } });
+      await onProgress?.(`Processed ${processed}/${total}`, processed);
+      console.log(`[import] (${processed}/${total}) ok work.code=${work.code}`);
+    } catch (err) {
+      console.error(`[import] (${processed + 1}/${total}) failed work.code=${work.code}:`, err);
+      throw err;
+    }
   }
 
-  await prisma.importBatch.update({ where: { id: batchId }, data: { status: "COMPLETED" } });
+  await prisma.importBatch.update({ where: { id: batchId }, data: { status: "COMPLETED", processedCount: processed } });
+  console.log(`[import] done batchId=${batchId} processed=${processed}/${total}`);
 }
 
 async function readRows(filePath: string): Promise<Record<string, unknown>[]> {

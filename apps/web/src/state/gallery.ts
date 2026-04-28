@@ -10,8 +10,9 @@ const MODE_LABELS: Record<Mode, string> = {
 };
 
 function parseBase(base: string) {
-  const [num, suffix = ""] = base.split("-");
-  return { num: Number(num), suffix };
+  const match = /^(\d+)(.*)$/.exec(base);
+  if (!match) return { num: NaN, suffix: base };
+  return { num: Number(match[1]), suffix: match[2] ?? "" };
 }
 
 export function sortItems(items: PhotoItem[]) {

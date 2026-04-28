@@ -103,10 +103,23 @@ function deriveExifInfo(exif: Record<string, unknown> | null) {
     aparture: formatAperture(exif.FNumber ?? exif.ApertureValue),
     ISO: stringOrNull(exif.ISO ?? exif.ISOSpeedRatings),
     megapixel: computeMegapixel(exif),
-    camera: stringOrNull(exif.Model),
+    camera: mergeCameraName(stringOrNull(exif.Make ?? exif.CameraMake), stringOrNull(exif.Model)),
     lens: stringOrNull(exif.LensModel ?? exif.Lens ?? exif.LensID),
     focal_length: formatFocalLength(exif.FocalLength)
   };
+}
+
+export function mergeCameraName(make: string | null | undefined, model: string | null | undefined): string | null {
+  const trimmedMake = typeof make === "string" ? make.trim() : "";
+  const trimmedModel = typeof model === "string" ? model.trim() : "";
+  if (!trimmedModel) return trimmedMake || null;
+  if (!trimmedMake) return trimmedModel;
+  const lowerModel = trimmedModel.toLowerCase();
+  const lowerMake = trimmedMake.toLowerCase();
+  if (lowerModel === lowerMake || lowerModel.startsWith(`${lowerMake} `)) {
+    return trimmedModel;
+  }
+  return `${trimmedMake} ${trimmedModel}`;
 }
 
 function formatShutter(raw: unknown): string | null {

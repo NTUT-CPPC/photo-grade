@@ -33,6 +33,7 @@ export function TwoPaneShell({
   const [rotation, setRotation] = useState(0);
   const footerRef = useRef<HTMLDivElement | null>(null);
   const [footerHeight, setFooterHeight] = useState(0);
+  const lastNavAtRef = useRef<number>(0);
 
   useLayoutEffect(() => {
     const node = footerRef.current;
@@ -61,10 +62,16 @@ export function TwoPaneShell({
       }
       if (event.key === "ArrowLeft") {
         if (!canPrev) return;
+        const now = Date.now();
+        if (now - lastNavAtRef.current < 400) return;
+        lastNavAtRef.current = now;
         event.preventDefault();
         onPrev();
       } else {
         if (!canNext) return;
+        const now = Date.now();
+        if (now - lastNavAtRef.current < 400) return;
+        lastNavAtRef.current = now;
         event.preventDefault();
         onNext();
       }

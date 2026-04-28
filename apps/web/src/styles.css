@@ -65,6 +65,13 @@ button:disabled {
   cursor: pointer;
 }
 
+.top-nav-trigger--icon {
+  gap: 0;
+  width: 1.9rem;
+  min-width: 1.9rem;
+  padding: 0.35rem;
+}
+
 .top-nav-trigger:hover,
 .top-nav-menu a:hover {
   background: #3f3f3f;
@@ -190,6 +197,52 @@ button:disabled {
   text-decoration: underline;
 }
 
+.top-nav-mode {
+  border-top: 1px solid #333333;
+  margin-top: 0.2rem;
+  padding-top: 0.5rem;
+}
+
+.top-nav-mode p {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  color: #c8c8c8;
+}
+
+.top-nav-mode-buttons {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.top-nav-mode-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.35rem 0.5rem;
+  background: #2b2b2b;
+  border: 1px solid #454545;
+  border-radius: 4px;
+  color: #cfcfcf;
+  font-size: 0.86rem;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.top-nav-mode-btn:hover {
+  background: #353535;
+  border-color: #5a5a5a;
+}
+
+.top-nav-mode-btn.active {
+  background: #3a3a3a;
+  border-color: #5a5a5a;
+  color: #ffc107;
+}
+
 .two-pane-shell,
 .admin-page {
   position: relative;
@@ -306,22 +359,6 @@ button:disabled {
   font-size: 0.86rem;
 }
 
-.mode-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  margin: 0.25rem 0 0.8rem;
-}
-
-.mode-row select {
-  color: #eeeeee;
-  background: #1e1e1e;
-  border: 1px solid #555555;
-  border-radius: 4px;
-  padding: 0.35rem 0.6rem;
-}
-
 .mode-banner {
   display: inline-block;
   color: #ffc107;
@@ -340,12 +377,12 @@ button:disabled {
   min-height: 1.65rem;
   width: 100%;
   margin: 0.35rem 0 0.55rem;
-  padding: 0.3rem 0.6rem;
+  padding: 0.35rem 0.75rem;
   border: 0;
   border-radius: 4px;
-  background: #6a4b11;
-  color: #ffffff;
-  font-weight: 600;
+  background: #3a3a3a;
+  color: #ffc107;
+  font-weight: 700;
   line-height: 1.3;
   font: inherit;
   text-align: left;
@@ -358,13 +395,23 @@ button:disabled {
 }
 
 .submitted-scores:hover:not(:disabled) {
-  background: #7d5915;
+  background: #454545;
+}
+
+.submitted-scores:disabled {
+  opacity: 1;
+  cursor: default;
 }
 
 .submitted-scores--empty {
-  background: transparent;
-  color: transparent;
-  cursor: default;
+  background: #3a3a3a;
+  color: #ffc107;
+}
+
+.submitted-scores__mode {
+  color: #ffc107;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .submitted-scores__sep {
@@ -376,6 +423,7 @@ button:disabled {
   display: inline-flex;
   align-items: baseline;
   gap: 0.25rem;
+  color: #ffffff;
 }
 
 .submitted-scores__label {
@@ -392,6 +440,11 @@ button:disabled {
 .submitted-scores__value {
   font-size: 0.98rem;
   font-variant-numeric: tabular-nums;
+  color: #ffffff;
+}
+
+.mode-banner--scores {
+  display: flex;
 }
 
 .score-flash {

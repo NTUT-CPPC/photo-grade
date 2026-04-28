@@ -1,6 +1,17 @@
 import { LogIn, LogOut, Menu } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getAuthStatus, getRuntimeConfig, logout, type AuthMode, type AuthStatus } from "../api/client";
+import {
+  getAuthStatus,
+  getMode,
+  getRuntimeConfig,
+  logout,
+  setMode as setModeApi,
+  type AuthMode,
+  type AuthStatus
+} from "../api/client";
+import { emitMode, onSyncState } from "../api/socket";
+import { modeLabel } from "../state/gallery";
+import type { Mode } from "../types";
 
 type RouteItem = {
   href: "/admin" | "/host" | "/score" | "/view";
@@ -14,6 +25,8 @@ const PROTECTED_ROUTES: RouteItem[] = [
 ];
 
 const ALL_ROUTES: RouteItem[] = [{ href: "/view", label: "View" }, ...PROTECTED_ROUTES];
+
+const HOST_MODES: Mode[] = ["initial", "secondary", "final"];
 
 function isActive(path: string, href: RouteItem["href"]) {
   if (href === "/view") return path === "/" || path.startsWith("/view");
@@ -33,8 +46,9 @@ export function TopNav() {
   const [authMode, setAuthMode] = useState<AuthMode>("basic");
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [viewQrCode, setViewQrCode] = useState("");
+  const [hostMode, setHostMode] = useState<Mode>("initial");
   const publicMode = isActive(path, "/view");
-  const hostMode = path.startsWith("/host");
+  const isHostPage = path.startsWith("/host");
   const isAuthenticated = authStatus?.authenticated ?? false;
   const showLogout = authMode === "oidc" && isAuthenticated;
   const menuItems = publicMode ? PROTECTED_ROUTES : ALL_ROUTES;
@@ -79,7 +93,7 @@ export function TopNav() {
   }, []);
 
   useEffect(() => {
-    if (!open || !hostMode) return;
+    if (!open || !isHostPage) return;
     let live = true;
     import("qrcode")
       .then(({ default: QRCode }) =>
@@ -98,7 +112,24 @@ export function TopNav() {
     return () => {
       live = false;
     };
-  }, [open, hostMode, viewEntryUrl]);
+  }, [open, isHostPage, viewEntryUrl]);
+
+  useEffect(() => {
+    if (!isHostPage) return;
+    let live = true;
+    getMode()
+      .then((mode) => {
+        if (live) setHostMode(mode);
+      })
+      .catch(() => undefined);
+    const off = onSyncState((state) => {
+      if (state.mode && live) setHostMode(state.mode);
+    });
+    return () => {
+      live = false;
+      off();
+    };
+  }, [isHostPage]);
 
   const handleLoginLink = (href: RouteItem["href"]) => (event: React.MouseEvent<HTMLAnchorElement>) => {
     setOpen(false);
@@ -118,18 +149,26 @@ export function TopNav() {
     }
   };
 
+  const handleSelectMode = (mode: Mode) => {
+    if (mode === hostMode) return;
+    setHostMode(mode);
+    emitMode(mode);
+    void setModeApi(mode).catch(() => undefined);
+  };
+
+  const triggerLabel = publicMode && !isAuthenticated ? "Login menu" : "Route menu";
+
   return (
     <nav className="top-nav" aria-label="Application routes" ref={navRef}>
       <button
         type="button"
-        className={`top-nav-trigger ${open ? "open" : ""}`}
+        className={`top-nav-trigger top-nav-trigger--icon ${open ? "open" : ""}`}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={publicMode && !isAuthenticated ? "Login menu" : "Route menu"}
+        aria-label={triggerLabel}
         onClick={() => setOpen((value) => !value)}
       >
-        {publicMode && !isAuthenticated ? <LogIn size={15} /> : <Menu size={15} />}
-        <span>{publicMode && !isAuthenticated ? "Login" : "Menu"}</span>
+        {publicMode && !isAuthenticated ? <LogIn size={16} /> : <Menu size={16} />}
       </button>
       {open ? (
         <div className="top-nav-menu" role="menu" aria-label={publicMode ? "Login links" : "Application links"}>
@@ -166,7 +205,7 @@ export function TopNav() {
               <span>Logout</span>
             </button>
           ) : null}
-          {hostMode ? (
+          {isHostPage ? (
             <section className="top-nav-qr">
               <p>Scan to open View mode</p>
               {viewQrCode ? (
@@ -177,6 +216,23 @@ export function TopNav() {
               <a href={viewEntryUrl} target="_blank" rel="noreferrer">
                 {viewEntryUrl}
               </a>
+            </section>
+          ) : null}
+          {isHostPage ? (
+            <section className="top-nav-mode" aria-label="評審模式">
+              <p>評審模式</p>
+              <div className="top-nav-mode-buttons">
+                {HOST_MODES.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    className={`top-nav-mode-btn${mode === hostMode ? " active" : ""}`}
+                    onClick={() => handleSelectMode(mode)}
+                  >
+                    {modeLabel(mode)}
+                  </button>
+                ))}
+              </div>
             </section>
           ) : null}
         </div>

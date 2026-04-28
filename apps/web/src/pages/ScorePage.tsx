@@ -4,7 +4,7 @@ import { getJudges, submitScore } from "../api/client";
 import { emitScore } from "../api/socket";
 import { SubmittedScoresPanel } from "../components/SubmittedScoresPanel";
 import { TwoPaneShell } from "../components/TwoPaneShell";
-import { modeLabel, useGallery } from "../state/gallery";
+import { useGallery } from "../state/gallery";
 import { judgeIndexForField } from "../state/work-scores";
 import type { Mode } from "../types";
 import { fieldsForMode } from "@photo-grade/shared";
@@ -115,13 +115,12 @@ export function ScorePage() {
       onJump={(base) => gallery.jumpTo(base)}
       footer={scoreInput}
     >
-      <span className="mode-banner">模式：{modeLabel(gallery.mode)}</span>
+      <SubmittedScoresPanel base={item?.base} mode={gallery.mode} />
       <header className="photo-details compact">
         <div className="meta-line">{gallery.idx + 1}/{gallery.items.length || 0}</div>
         <h1>{concept?.title ?? item?.base ?? "No photo"}</h1>
         <small>{item ? `${item.base}_mini.jpg` : "-"}</small>
       </header>
-      <SubmittedScoresPanel base={item?.base} mode={gallery.mode} />
       {gallery.error ? <p className="system-note error">{gallery.error}</p> : null}
     </TwoPaneShell>
   );

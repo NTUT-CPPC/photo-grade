@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useJudges } from "../state/judges";
+import { modeLabel } from "../state/gallery";
 import { summarizeForMode, useWorkScores, type CompactSummary } from "../state/work-scores";
 import type { Mode } from "../types";
 import { ScoreDetailDialog } from "./ScoreDetailDialog";
@@ -16,7 +17,10 @@ export function SubmittedScoresPanel({ base, mode }: Props) {
 
   const summary = summarizeForMode(rows, mode);
   const empty = summary.kind === "empty";
-  const className = `submitted-scores${empty ? " submitted-scores--empty" : ""}`;
+  const className = `mode-banner mode-banner--scores submitted-scores${
+    empty ? " submitted-scores--empty" : ""
+  }`;
+  const label = modeLabel(mode);
 
   return (
     <>
@@ -27,9 +31,10 @@ export function SubmittedScoresPanel({ base, mode }: Props) {
           if (!empty) setOpen(true);
         }}
         disabled={empty}
-        aria-label={empty ? "尚無分數" : "顯示完整評分"}
+        aria-label={empty ? `${label}（尚無分數）` : `${label}：顯示完整評分`}
         aria-live="polite"
       >
+        <span className="submitted-scores__mode">{label}</span>
         {empty ? null : renderSummary(summary)}
       </button>
       {open ? (
@@ -49,15 +54,13 @@ function renderSummary(summary: Exclude<CompactSummary, { kind: "empty" }>) {
   if (summary.kind === "value") {
     return (
       <span className="submitted-scores__chip">
-        <span className="submitted-scores__label">{summary.modeLabel}</span>
         <span className="submitted-scores__value">{summary.value}</span>
       </span>
     );
   }
   if (summary.kind === "list") {
     return (
-      <>
-        <span className="submitted-scores__label">{summary.modeLabel}</span>
+      <span className="submitted-scores__chip">
         <span className="submitted-scores__value">
           {summary.values.map((value, idx) => (
             <span key={`${summary.modeLabel}-${idx}-${value}`}>
@@ -66,12 +69,11 @@ function renderSummary(summary: Exclude<CompactSummary, { kind: "empty" }>) {
             </span>
           ))}
         </span>
-      </>
+      </span>
     );
   }
   return (
     <>
-      <span className="submitted-scores__label">{summary.modeLabel}</span>
       {summary.entries.map((entry) => (
         <span className="submitted-scores__chip" key={entry.label}>
           <span className="submitted-scores__sublabel">{entry.label}</span>

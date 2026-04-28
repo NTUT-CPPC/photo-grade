@@ -477,6 +477,11 @@ button:disabled {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
 
+.score-detail--wide {
+  width: min(48rem, 100%);
+  max-height: 85vh;
+}
+
 .score-detail__head {
   display: flex;
   align-items: baseline;
@@ -1050,6 +1055,61 @@ button:disabled {
   padding: 0.55rem;
   text-align: center;
   color: #d8d8d8;
+}
+
+.dryrun-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35rem 0.85rem;
+  width: 100%;
+  margin: 0 0 1rem;
+  padding: 0.55rem 0.75rem;
+  color: #eeeeee;
+  background: #252525;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.dryrun-summary:hover:not(:disabled) {
+  background: #2f2f2f;
+  border-color: #4a4a4a;
+}
+
+.dryrun-summary:focus-visible {
+  outline: 2px solid #ffca28;
+  outline-offset: 2px;
+}
+
+.dryrun-summary__chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.dryrun-summary__chip--error .dryrun-summary__value {
+  color: #ef9a9a;
+}
+
+.dryrun-summary__label {
+  color: #aaaaaa;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+}
+
+.dryrun-summary__value {
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.dryrun-summary__sep {
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .message-list {

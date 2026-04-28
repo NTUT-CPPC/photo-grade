@@ -43,6 +43,7 @@ export function AdminPage() {
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dryRunDialogOpen, setDryRunDialogOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dryRunAbortRef = useRef<AbortController | null>(null);
@@ -187,7 +188,7 @@ export function AdminPage() {
       if (ctrl.signal.aborted) return;
       const name = (err as Error)?.name;
       if (name === "AbortError") return;
-      setError(err instanceof Error ? err.message : "Import dry-run failed");
+      setError(err instanceof Error ? err.message : "試跑失敗");
     } finally {
       if (dryRunAbortRef.current === ctrl) {
         dryRunAbortRef.current = null;
@@ -204,7 +205,7 @@ export function AdminPage() {
       await cancelImport(importId);
       setProgress(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Cancel failed");
+      setError(err instanceof Error ? err.message : "取消失敗");
     } finally {
       setCancelBusy(false);
     }
@@ -218,7 +219,7 @@ export function AdminPage() {
       const initial = await confirmImport(importId);
       if (initial) setProgress(initial);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Import confirm failed");
+      setError(err instanceof Error ? err.message : "確認匯入失敗");
     } finally {
       setConfirmBusy(false);
     }
@@ -231,6 +232,7 @@ export function AdminPage() {
     setProgress(null);
     setActiveBatch(null);
     setError(null);
+    setDryRunDialogOpen(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -257,7 +259,7 @@ export function AdminPage() {
     try {
       setJudges((await saveJudges(payload)).map(toJudgeDraft));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save judges failed");
+      setError(err instanceof Error ? err.message : "儲存評審失敗");
     } finally {
       setJudgeBusy(false);
     }
@@ -284,9 +286,9 @@ export function AdminPage() {
     <main className="admin-page">
       <section className="admin-photo-panel">
         <div>
-          <span className="mode-banner">Admin</span>
-          <h1>Import photos</h1>
-          <p>選擇 CSV 或 Excel 檔案，先 dry-run 檢查欄位後再確認匯入。</p>
+          <span className="mode-banner">管理</span>
+          <h1>匯入作品</h1>
+          <p>選擇 CSV 或 Excel 檔案，系統會先做試跑檢查欄位後再確認匯入。</p>
         </div>
       </section>
       <section className="admin-controls">
@@ -297,7 +299,7 @@ export function AdminPage() {
               value={judgeName}
               onChange={(event) => setJudgeName(event.target.value)}
               placeholder="新增評審名字"
-              aria-label="Judge name"
+              aria-label="評審名稱"
             />
             <button type="button" onClick={addJudgeName} disabled={judgeBusy || !judgeName.trim()}>
               <Plus size={16} />
@@ -368,7 +370,7 @@ export function AdminPage() {
                   ? file.name
                   : activeBatch
                     ? activeBatch.fileName
-                    : "選擇或拖曳 CSV / Excel 檔案 — 選完會自動 dry-run"}
+                    : "選擇或拖曳 CSV / Excel 檔案，選完會自動進行試跑檢查"}
               </span>
               <input
                 ref={fileInputRef}
@@ -377,26 +379,32 @@ export function AdminPage() {
                 onChange={selectFile}
               />
             </label>
-            {dryRunBusy ? <p className="system-note">Dry-run checking…</p> : null}
-            {dryRun ? <DryRunResult result={dryRun} total={total} /> : null}
+            {dryRunBusy ? <p className="system-note">試跑檢查中…</p> : null}
+            {dryRun ? (
+              <DryRunSummary
+                result={dryRun}
+                total={total}
+                onOpen={() => setDryRunDialogOpen(true)}
+              />
+            ) : null}
             <div className="admin-actions">
               <button
                 type="button"
                 title={
                   dryRunHasErrors
-                    ? "Dry-run 有錯誤，請修正欄位後重新選檔。"
+                    ? "試跑有錯誤，請修正欄位後重新選檔。"
                     : "確認後會清掉所有舊資料並重新下載匯入。"
                 }
                 onClick={() => void runConfirm()}
                 disabled={!canConfirm}
               >
                 <Check size={18} />
-                {confirmBusy ? "Queueing…" : "Confirm import"}
+                {confirmBusy ? "排入佇列中…" : "確認匯入"}
               </button>
               {isImportTerminal ? (
-                <button type="button" onClick={resetImport} title="清除目前狀態並開始新匯入。">
+                <button type="button" onClick={resetImport} title="清除目前狀態並開始新的匯入。">
                   <RotateCcw size={18} />
-                  Start new import
+                  開始新的匯入
                 </button>
               ) : null}
             </div>
@@ -411,7 +419,7 @@ export function AdminPage() {
               </p>
             ) : null}
             <div className="progress-head">
-              <span>{progress.phase ?? progress.status ?? "Import"}</span>
+              <span>{progress.phase ?? progress.status ?? "匯入"}</span>
               <span>
                 {progress.done ?? 0} / {progress.total ?? 0}
                 {progress.total ? ` · ${progressPercent}%` : null}
@@ -423,7 +431,7 @@ export function AdminPage() {
             {progress.message ? <p>{progress.message}</p> : null}
             {progress.workerOnline === false ? (
               <p className="system-note error">
-                Worker 容器沒在跑，匯入工作不會被處理。請執行 <code>docker compose up -d worker</code>，啟動後本頁會自動恢復。
+                工作處理程序未啟動，匯入工作無法執行。請執行 <code>docker compose up -d worker</code>，啟動後本頁會自動恢復。
               </p>
             ) : null}
             {isImportActive ? (
@@ -432,10 +440,10 @@ export function AdminPage() {
                   type="button"
                   onClick={() => void runCancel()}
                   disabled={cancelBusy}
-                  title="中斷目前匯入。已下載的檔案會保留，再次按 Confirm 會清掉重新下載。"
+                  title="中斷目前匯入。已下載的檔案會保留，再次按確認匯入會清掉重新下載。"
                 >
                   <X size={18} />
-                  {cancelBusy ? "Cancelling…" : "Cancel import"}
+                  {cancelBusy ? "取消中…" : "取消匯入"}
                 </button>
               </div>
             ) : null}
@@ -443,6 +451,9 @@ export function AdminPage() {
         ) : null}
         </section>
       </section>
+      {dryRun && dryRunDialogOpen ? (
+        <DryRunDialog result={dryRun} total={total} onClose={() => setDryRunDialogOpen(false)} />
+      ) : null}
     </main>
   );
 }
@@ -461,44 +472,126 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(diffSec / 86400)} 天前`;
 }
 
-function DryRunResult({ result, total }: { result: ImportDryRunResult; total: number }) {
+function DryRunSummary({
+  result,
+  total,
+  onOpen
+}: {
+  result: ImportDryRunResult;
+  total: number;
+  onOpen: () => void;
+}) {
   const errors = result.errors ?? [];
   const warnings = result.warnings ?? [];
   const items = result.items ?? [];
+  if (!items.length && !errors.length && !warnings.length && !total) return null;
   return (
-    <div className="dryrun-panel">
-      <h2>Dry-run result</h2>
-      <div className="import-stats" role="group" aria-label="Dry-run 摘要">
-        <span>Total {total ?? "-"}</span>
-        <span>Valid {result.valid ?? "-"}</span>
-        <span>Warnings {warnings.length}</span>
-        <span>Errors {errors.length}</span>
-      </div>
-      {errors.length ? <MessageList title={`錯誤 (${errors.length})`} severity="error" items={errors} /> : null}
-      {warnings.length ? <MessageList title={`警告 (${warnings.length})`} severity="warning" items={warnings} /> : null}
-      {items.length ? (
-        <div className="dryrun-items">
-          <h3>作品列表 ({items.length})</h3>
-          <table className="import-table">
-            <thead>
-              <tr>
-                <th>代碼</th>
-                <th>名稱</th>
-                <th>狀態</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, index) => (
-                <tr key={`${item.base ?? item.name ?? index}`}>
-                  <td>{item.base ?? "-"}</td>
-                  <td>{item.name ?? "-"}</td>
-                  <td>{item.status ?? "-"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <button
+      type="button"
+      className="dryrun-summary"
+      onClick={onOpen}
+      aria-label="開啟試跑結果明細"
+      title="點擊查看試跑結果明細"
+    >
+      <span className="dryrun-summary__chip">
+        <span className="dryrun-summary__label">總列數</span>
+        <span className="dryrun-summary__value">{total ?? "-"}</span>
+      </span>
+      <span className="dryrun-summary__sep">·</span>
+      <span className="dryrun-summary__chip">
+        <span className="dryrun-summary__label">有效</span>
+        <span className="dryrun-summary__value">{result.valid ?? "-"}</span>
+      </span>
+      <span className="dryrun-summary__sep">·</span>
+      <span className="dryrun-summary__chip">
+        <span className="dryrun-summary__label">警告</span>
+        <span className="dryrun-summary__value">{warnings.length}</span>
+      </span>
+      <span className="dryrun-summary__sep">·</span>
+      <span
+        className={`dryrun-summary__chip${errors.length ? " dryrun-summary__chip--error" : ""}`}
+      >
+        <span className="dryrun-summary__label">錯誤</span>
+        <span className="dryrun-summary__value">{errors.length}</span>
+      </span>
+    </button>
+  );
+}
+
+function DryRunDialog({
+  result,
+  total,
+  onClose
+}: {
+  result: ImportDryRunResult;
+  total: number;
+  onClose: () => void;
+}) {
+  const errors = result.errors ?? [];
+  const warnings = result.warnings ?? [];
+  const items = result.items ?? [];
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="score-detail-backdrop" onClick={onClose} role="presentation">
+      <div
+        className="score-detail score-detail--wide"
+        role="dialog"
+        aria-modal="true"
+        aria-label="試跑結果"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="score-detail__head">
+          <span className="score-detail__title">試跑結果</span>
+          <button type="button" className="score-detail__close" onClick={onClose} aria-label="關閉">
+            ×
+          </button>
+        </header>
+        <div className="score-detail__body">
+          <div className="import-stats" role="group" aria-label="試跑摘要">
+            <span>總列數 {total ?? "-"}</span>
+            <span>有效 {result.valid ?? "-"}</span>
+            <span>警告 {warnings.length}</span>
+            <span>錯誤 {errors.length}</span>
+          </div>
+          {errors.length ? (
+            <MessageList title={`錯誤 (${errors.length})`} severity="error" items={errors} />
+          ) : null}
+          {warnings.length ? (
+            <MessageList title={`警告 (${warnings.length})`} severity="warning" items={warnings} />
+          ) : null}
+          {items.length ? (
+            <div className="dryrun-items">
+              <h3>作品列表 ({items.length})</h3>
+              <table className="import-table">
+                <thead>
+                  <tr>
+                    <th>代碼</th>
+                    <th>名稱</th>
+                    <th>狀態</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item, index) => (
+                    <tr key={`${item.base ?? item.name ?? index}`}>
+                      <td>{item.base ?? "-"}</td>
+                      <td>{item.name ?? "-"}</td>
+                      <td>{item.status ?? "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }

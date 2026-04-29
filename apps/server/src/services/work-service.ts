@@ -33,7 +33,9 @@ export async function listWorks(
       topN = presentation.finalCutoff ?? (await getEffectiveDefaultFinalTopN());
     }
     if (!Number.isInteger(topN) || topN < 1) topN = await getEffectiveDefaultFinalTopN();
-    const ranked = [...sorted].sort((a, b) => b.secondaryTotal - a.secondaryTotal);
+    const ranked = sorted
+      .filter((w) => w.initialPassed)
+      .sort((a, b) => b.secondaryTotal - a.secondaryTotal);
     const accepted: typeof ranked = [];
     let lastScore: number | null = null;
     for (const work of ranked) {

@@ -1,10 +1,16 @@
 import { Worker } from "bullmq";
-import { connection, logQueueSnapshot } from "./queue.js";
+import {
+  SHEET_SYNC_SWEEP_JOB,
+  connection,
+  ensureSheetSyncSweepSchedule,
+  logQueueSnapshot
+} from "./queue.js";
 import { processImportBatch } from "./services/import-service.js";
-import { processSheetSync } from "./services/sheet-service.js";
+import { processSheetSync, reconcileSheetSync } from "./services/sheet-service.js";
 import { ensureDataDirs } from "./storage.js";
 
 await ensureDataDirs();
+await ensureSheetSyncSweepSchedule();
 
 const worker = new Worker(
   "photo-grade",
@@ -19,6 +25,10 @@ const worker = new Worker(
     if (job.name === "sheet-sync") {
       await processSheetSync(job.data.scoreIds);
       return;
+    }
+    if (job.name === SHEET_SYNC_SWEEP_JOB) {
+      const result = await reconcileSheetSync();
+      return result;
     }
     throw new Error(`Unknown job ${job.name}`);
   },

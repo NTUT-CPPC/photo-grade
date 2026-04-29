@@ -22,7 +22,30 @@ export interface PresentationStatePayload {
   workId: string | null;
   workCode: string | null;
   idx: number;
+  finalCutoff: number;
   updatedAt: string;
+}
+
+export type OrderingMode = "sequential" | "shuffle";
+
+export interface OrderingStatePayload {
+  defaultMode: OrderingMode;
+  activeMode: OrderingMode;
+  shuffleOrder: string[];
+  generatedAt: string | null;
+  updatedAt: string;
+  hasShuffle: boolean;
+}
+
+export interface ModePreviewResult {
+  mode: JudgingMode;
+  count: number;
+  baseCount: number;
+  overflow: number;
+  defaultTopN: number;
+  currentTopN: number;
+  judgeCount?: number;
+  initialThreshold?: number;
 }
 
 export interface ScoreInput {

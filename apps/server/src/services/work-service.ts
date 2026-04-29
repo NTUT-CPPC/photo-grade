@@ -3,18 +3,35 @@ import path from "node:path";
 import type { JudgingMode, WorkSummary } from "@photo-grade/shared";
 import { prisma } from "../prisma.js";
 import { dataDirs, publicAssetUrl } from "../storage.js";
+import { getOrderingState } from "./ordering-service.js";
+import { getPresentationState } from "./presentation-service.js";
 
-export async function listWorks(mode: JudgingMode = "initial"): Promise<WorkSummary[]> {
+export const DEFAULT_FINAL_TOP_N = 60;
+
+export interface ListWorksOptions {
+  topN?: number;
+}
+
+export async function listWorks(
+  mode: JudgingMode = "initial",
+  options: ListWorksOptions = {}
+): Promise<WorkSummary[]> {
   const works = await prisma.work.findMany({ include: { assets: true }, orderBy: [{ code: "asc" }] });
   const sorted = works.sort((a, b) => compareCodes(a.code, b.code));
   let filtered = sorted;
   if (mode === "secondary") filtered = sorted.filter((w) => w.initialPassed);
   if (mode === "final") {
+    let topN = options.topN;
+    if (topN === undefined) {
+      const presentation = await getPresentationState();
+      topN = presentation.finalCutoff ?? DEFAULT_FINAL_TOP_N;
+    }
+    if (!Number.isInteger(topN) || topN < 1) topN = DEFAULT_FINAL_TOP_N;
     const ranked = [...sorted].sort((a, b) => b.secondaryTotal - a.secondaryTotal);
     const accepted: typeof ranked = [];
     let lastScore: number | null = null;
     for (const work of ranked) {
-      if (accepted.length < 30 || work.secondaryTotal === lastScore) {
+      if (accepted.length < topN || work.secondaryTotal === lastScore) {
         accepted.push(work);
         lastScore = work.secondaryTotal;
       } else {
@@ -24,7 +41,24 @@ export async function listWorks(mode: JudgingMode = "initial"): Promise<WorkSumm
     const acceptedIds = new Set(accepted.map((w) => w.id));
     filtered = sorted.filter((w) => acceptedIds.has(w.id));
   }
-  return Promise.all(filtered.map(toSummary));
+
+  const ordered = await applyOrdering(filtered);
+  return Promise.all(ordered.map(toSummary));
+}
+
+async function applyOrdering<T extends { code: string }>(items: T[]): Promise<T[]> {
+  const ordering = await getOrderingState();
+  if (ordering.activeMode !== "shuffle" || ordering.shuffleOrder.length === 0) return items;
+  const positions = new Map<string, number>();
+  ordering.shuffleOrder.forEach((code, index) => positions.set(code, index));
+  return [...items].sort((a, b) => {
+    const ai = positions.get(a.code);
+    const bi = positions.get(b.code);
+    if (ai === undefined && bi === undefined) return compareCodes(a.code, b.code);
+    if (ai === undefined) return 1;
+    if (bi === undefined) return -1;
+    return ai - bi;
+  });
 }
 
 async function toSummary(work: Awaited<ReturnType<typeof prisma.work.findMany>>[number] & { assets: Array<{ kind: string; path: string }> }): Promise<WorkSummary> {

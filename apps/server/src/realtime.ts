@@ -1,7 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Socket } from "socket.io";
 import { Server } from "socket.io";
-import type { ScoreChangedPayload } from "@photo-grade/shared";
+import type { OrderingStatePayload, ScoreChangedPayload } from "@photo-grade/shared";
 import { env } from "./env.js";
 import { isAuthorizedBasicHeader } from "./auth.js";
 import { sessionMiddleware } from "./session.js";
@@ -115,6 +115,10 @@ export function emitScoreSubmitted(payload: ScoreChangedPayload): void {
 export function emitScoreChanged(payload: ScoreChangedPayload): void {
   io?.emit("score:changed", payload);
   io?.emit("score", payload);
+}
+
+export function emitOrderingChanged(state: OrderingStatePayload): void {
+  io?.emit("ordering:changed", state);
 }
 
 type Ack = (payload: { ok: boolean; data?: unknown; error?: string }) => void;

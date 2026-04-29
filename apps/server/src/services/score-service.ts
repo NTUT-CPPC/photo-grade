@@ -86,14 +86,19 @@ function normalizeScoreInput(input: ScoreInput): NormalizedScoreInput {
   };
 }
 
-async function recomputeWorkDerivedScores(workId: string, client: Pick<typeof prisma, "score" | "work"> = prisma): Promise<void> {
+async function recomputeWorkDerivedScores(
+  workId: string,
+  client: Pick<typeof prisma, "score" | "work" | "judge"> = prisma
+): Promise<void> {
   const scores = await client.score.findMany({ where: { workId } });
   const initial = scores.find((s) => s.round === "initial" && s.field === "初評")?.value ?? null;
   const secondaryTotal = scores.filter((s) => s.round === "secondary").reduce((sum, s) => sum + s.value, 0);
+  const judgeCount = await client.judge.count();
+  const threshold = Math.ceil(Math.max(judgeCount, 1) / 2);
   await client.work.update({
     where: { id: workId },
     data: {
-      initialPassed: initial !== null ? initial > 0 : undefined,
+      initialPassed: initial !== null ? initial >= threshold : undefined,
       secondaryTotal
     }
   });

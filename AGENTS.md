@@ -367,12 +367,16 @@ Service account email 由 `getServiceAccountEmail()` 從 JSON 的 `client_email`
 
 `ensureWritableWorksheet()` 對 worksheet 採取以下策略：
 
-- 沒有對應 worksheet → 建一個 + 寫 header row。
-- worksheet 完全空白 → 直接寫 header row。
-- header 完全相符 → 重用。
-- header 與 canonical 不相符 → **不破壞既有資料**，建立 `<原名>-YYYYMMDD-HHMMSS` 的新 worksheet；若 source 是 `db`，會把 `SheetSyncConfig.worksheetTitle` 更新到新名稱。
+- 沒有對應 worksheet → 建一個 + 寫 canonical header。
+- worksheet 完全空白 → 直接寫 canonical header。
+- header 已包含全部 canonical 欄位（順序可重排、可多出使用者自訂欄位）→ 直接重用。
+- header 缺少部分 canonical 欄位 → **保留既有順序與使用者自訂欄位**，把缺少的欄位依 canonical 順序 **追加在最右側**，把擴充後的 header 寫回 row 1。
 
-Canonical header = `[作品編號, 作品連結, ...sortedFields]`，sortedFields 走 `compareScoreField`。
+合成「effective header」的邏輯放在 `sheet-header.ts::computeEffectiveHeader()`（純函式，有單元測試）。所有後續 row 操作都按 effective header 的位置查欄位（而非 canonical 位置），所以 sheet 寫入也保留使用者新增的尾部欄位。
+
+> 從 column-order 自由化開始，**不再因 header 不符而建立新 worksheet**。早期的 `<原名>-YYYYMMDD-HHMMSS` 遷移路徑已移除；`migrated_header` action 也一併刪除。
+
+Canonical header = `[作品編號, 作品連結, ...sortedFields, 最後更新時間]`，sortedFields 走 `compareScoreField`。
 
 ### 11.5 Admin 端 UI gating
 

@@ -9,6 +9,7 @@ import {
   LINK_HEADER,
   UPDATED_AT_HEADER,
   buildCanonicalHeaderForJudgeCount,
+  computeEffectiveHeader,
   formatUpdatedAt
 } from "./sheet-header.js";
 
@@ -19,7 +20,14 @@ export interface SheetHeaderCheckResult {
   headerMessage: string;
 }
 
-type EnsureWorksheetAction = "matched" | "created_sheet" | "initialized_header" | "migrated_header";
+type EnsureWorksheetAction = "matched" | "created_sheet" | "initialized_header" | "extended_header";
+
+interface EnsureWorksheetResult {
+  worksheetTitle: string;
+  values: string[][];
+  action: EnsureWorksheetAction;
+  appendedColumns: string[];
+}
 
 export async function processSheetSync(scoreIds?: string[]): Promise<void> {
   const outboxItems = await claimOutboxItems(scoreIds);
@@ -51,50 +59,54 @@ export async function processSheetSync(scoreIds?: string[]): Promise<void> {
     const canonicalHeader = await buildCanonicalHeader();
     const workspace = await ensureWritableWorksheet(sheets, target, canonicalHeader);
     const values = workspace.values;
+    const effectiveHeader = values[0] ?? [];
+    const headerWidth = effectiveHeader.length;
 
-    const codeCol = canonicalHeader.indexOf(CODE_HEADER);
-    const linkCol = canonicalHeader.indexOf(LINK_HEADER);
-    const updatedAtCol = canonicalHeader.indexOf(UPDATED_AT_HEADER);
+    const codeCol = effectiveHeader.indexOf(CODE_HEADER);
+    const linkCol = effectiveHeader.indexOf(LINK_HEADER);
+    const updatedAtCol = effectiveHeader.indexOf(UPDATED_AT_HEADER);
     const rowIndexByCode = new Map<string, number>();
-    for (let idx = 1; idx < values.length; idx++) {
-      const row = values[idx] ?? [];
-      const code = String(row[codeCol] ?? "").trim();
-      if (code) rowIndexByCode.set(code, idx);
+    if (codeCol >= 0) {
+      for (let idx = 1; idx < values.length; idx++) {
+        const row = values[idx] ?? [];
+        const code = String(row[codeCol] ?? "").trim();
+        if (code) rowIndexByCode.set(code, idx);
+      }
     }
 
     const touchedRows = new Set<number>();
     for (const item of outboxItems) {
       const score = item.score;
-      const fieldCol = canonicalHeader.indexOf(score.field);
+      const fieldCol = effectiveHeader.indexOf(score.field);
       if (fieldCol < 0) continue;
 
       let rowIdx = rowIndexByCode.get(score.work.code);
       if (rowIdx === undefined) {
         rowIdx = values.length;
-        const row = Array(canonicalHeader.length).fill("");
-        row[codeCol] = score.work.code;
-        row[linkCol] = score.work.sourceUrl ?? "";
+        const row = Array(headerWidth).fill("");
+        if (codeCol >= 0) row[codeCol] = score.work.code;
+        if (linkCol >= 0) row[linkCol] = score.work.sourceUrl ?? "";
         values.push(row);
         rowIndexByCode.set(score.work.code, rowIdx);
       }
 
-      const row = ensureRow(values, rowIdx, canonicalHeader.length);
-      row[codeCol] = score.work.code;
-      row[linkCol] = score.work.sourceUrl ?? "";
+      const row = ensureRow(values, rowIdx, headerWidth);
+      if (codeCol >= 0) row[codeCol] = score.work.code;
+      if (linkCol >= 0) row[linkCol] = score.work.sourceUrl ?? "";
       row[fieldCol] = String(score.value);
       touchedRows.add(rowIdx);
     }
 
     if (updatedAtCol >= 0) {
       for (const rowIdx of touchedRows) {
-        const row = ensureRow(values, rowIdx, canonicalHeader.length);
+        const row = ensureRow(values, rowIdx, headerWidth);
         row[updatedAtCol] = updatedAtStamp;
       }
     }
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: target.spreadsheetId,
-      range: `${quoteSheetTitle(workspace.worksheetTitle)}!A1:${columnName(canonicalHeader.length - 1)}${Math.max(values.length, 1)}`,
+      range: `${quoteSheetTitle(workspace.worksheetTitle)}!A1:${columnName(headerWidth - 1)}${Math.max(values.length, 1)}`,
       valueInputOption: "RAW",
       requestBody: { values }
     });
@@ -118,7 +130,7 @@ export async function verifySheetSyncWorksheet(input: {
     worksheetTitle: workspace.worksheetTitle,
     headerOk: true,
     headerAction: describeHeaderAction(workspace.action),
-    headerMessage: describeHeaderMessage(workspace.action, workspace.worksheetTitle)
+    headerMessage: describeHeaderMessage(workspace.action, workspace.worksheetTitle, workspace.appendedColumns)
   };
 }
 
@@ -132,7 +144,7 @@ async function ensureWritableWorksheet(
   target: { source: "db" | "env"; spreadsheetId: string; worksheetTitle: string },
   canonicalHeader: string[],
   options: { gidHint?: number | null } = {}
-): Promise<{ worksheetTitle: string; values: string[][]; action: EnsureWorksheetAction }> {
+): Promise<EnsureWorksheetResult> {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: target.spreadsheetId });
   const sheetsList = meta.data.sheets ?? [];
   let worksheetTitle = target.worksheetTitle;
@@ -151,29 +163,44 @@ async function ensureWritableWorksheet(
   if (!found) {
     await addWorksheet(sheets, target.spreadsheetId, worksheetTitle);
     await writeHeaderRow(sheets, target.spreadsheetId, worksheetTitle, canonicalHeader);
-    return { worksheetTitle, values: [canonicalHeader.slice()], action: "created_sheet" };
+    return {
+      worksheetTitle,
+      values: [canonicalHeader.slice()],
+      action: "created_sheet",
+      appendedColumns: []
+    };
   }
 
   const currentValues = await readWorksheetValues(sheets, target.spreadsheetId, worksheetTitle);
   const isBlank = currentValues.length === 0 || currentValues.every((row) => row.every((cell) => String(cell).trim() === ""));
   if (isBlank) {
     await writeHeaderRow(sheets, target.spreadsheetId, worksheetTitle, canonicalHeader);
-    return { worksheetTitle, values: [canonicalHeader.slice()], action: "initialized_header" };
+    return {
+      worksheetTitle,
+      values: [canonicalHeader.slice()],
+      action: "initialized_header",
+      appendedColumns: []
+    };
   }
 
-  const existingHeader = normalizeHeader(currentValues[0] ?? []);
-  if (headersMatch(existingHeader, canonicalHeader)) {
-    const normalized = [canonicalHeader.slice(), ...currentValues.slice(1).map((row) => trimRow(row, canonicalHeader.length))];
-    return { worksheetTitle, values: normalized, action: "matched" };
+  const existingHeader = currentValues[0] ?? [];
+  const { header: effectiveHeader, appended } = computeEffectiveHeader(existingHeader, canonicalHeader);
+
+  if (appended.length > 0) {
+    await writeHeaderRow(sheets, target.spreadsheetId, worksheetTitle, effectiveHeader);
   }
 
-  const nextWorksheetTitle = uniqueWorksheetTitle(worksheetTitle, sheetsList.map((entry) => entry.properties?.title ?? ""));
-  await addWorksheet(sheets, target.spreadsheetId, nextWorksheetTitle);
-  await writeHeaderRow(sheets, target.spreadsheetId, nextWorksheetTitle, canonicalHeader);
-  if (target.source === "db") {
-    await setSheetSyncWorksheetTitle(nextWorksheetTitle);
-  }
-  return { worksheetTitle: nextWorksheetTitle, values: [canonicalHeader.slice()], action: "migrated_header" };
+  const normalized: string[][] = [
+    effectiveHeader.slice(),
+    ...currentValues.slice(1).map((row) => trimRow(row, effectiveHeader.length))
+  ];
+
+  return {
+    worksheetTitle,
+    values: normalized,
+    action: appended.length === 0 ? "matched" : "extended_header",
+    appendedColumns: appended
+  };
 }
 
 async function addWorksheet(sheets: sheets_v4.Sheets, spreadsheetId: string, worksheetTitle: string): Promise<void> {
@@ -211,18 +238,6 @@ async function readWorksheetValues(
   return (response.data.values ?? []).map((row) => row.map((cell) => String(cell ?? "")));
 }
 
-function normalizeHeader(values: string[]): string[] {
-  return values.map((value) => String(value ?? "").trim());
-}
-
-function headersMatch(actual: string[], expected: string[]): boolean {
-  if (actual.length !== expected.length) return false;
-  for (let index = 0; index < expected.length; index += 1) {
-    if ((actual[index] ?? "") !== expected[index]) return false;
-  }
-  return true;
-}
-
 function trimRow(row: string[], width: number): string[] {
   const normalized = row.slice(0, width).map((value) => String(value ?? ""));
   if (normalized.length < width) normalized.push(...Array(width - normalized.length).fill(""));
@@ -236,19 +251,6 @@ function ensureRow(values: string[][], index: number, width: number): string[] {
   return row;
 }
 
-function uniqueWorksheetTitle(baseTitle: string, takenTitles: string[]): string {
-  const now = new Date();
-  const stamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}${String(now.getUTCMinutes()).padStart(2, "0")}${String(now.getUTCSeconds()).padStart(2, "0")}`;
-  const base = `${baseTitle}-${stamp}`.slice(0, 90);
-  const taken = new Set(takenTitles);
-  if (!taken.has(base)) return base;
-  for (let index = 1; index < 1000; index += 1) {
-    const next = `${base}-${index}`.slice(0, 100);
-    if (!taken.has(next)) return next;
-  }
-  return `${base}-${Date.now()}`.slice(0, 100);
-}
-
 function quoteSheetTitle(title: string): string {
   return `'${title.replace(/'/g, "''")}'`;
 }
@@ -256,19 +258,24 @@ function quoteSheetTitle(title: string): string {
 function describeHeaderAction(action: EnsureWorksheetAction): string {
   if (action === "created_sheet") return "已建立工作表";
   if (action === "initialized_header") return "已建立 Header";
-  if (action === "migrated_header") return "Header 不符，已建立新工作表";
+  if (action === "extended_header") return "已補上缺少欄位";
   return "Header 正常";
 }
 
-function describeHeaderMessage(action: EnsureWorksheetAction, worksheetTitle: string): string {
+function describeHeaderMessage(
+  action: EnsureWorksheetAction,
+  worksheetTitle: string,
+  appendedColumns: string[] = []
+): string {
   if (action === "created_sheet") {
     return `已建立工作表「${worksheetTitle}」並寫入標準 Header。`;
   }
   if (action === "initialized_header") {
     return `工作表「${worksheetTitle}」原本空白，已寫入標準 Header。`;
   }
-  if (action === "migrated_header") {
-    return `原工作表 Header 不符，已建立「${worksheetTitle}」並切換後續同步目標。`;
+  if (action === "extended_header") {
+    const list = appendedColumns.join("、");
+    return `在原工作表「${worksheetTitle}」末尾補上 ${appendedColumns.length} 個缺少欄位（${list}）。`;
   }
   return `工作表「${worksheetTitle}」Header 檢查通過。`;
 }

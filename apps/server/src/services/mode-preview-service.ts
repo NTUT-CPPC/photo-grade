@@ -21,6 +21,18 @@ export async function previewMode(
 
   if (mode === "initial") {
     const count = await prisma.work.count();
+    return {
+      mode,
+      count,
+      baseCount: count,
+      overflow: 0,
+      defaultTopN: DEFAULT_FINAL_TOP_N,
+      currentTopN: DEFAULT_FINAL_TOP_N
+    };
+  }
+
+  if (mode === "secondary") {
+    const count = await prisma.work.count({ where: { initialPassed: true } });
     const judges = await listJudges();
     const judgeCount = Math.max(judges.length, 1);
     const initialThreshold = Math.ceil(judgeCount / 2);
@@ -33,18 +45,6 @@ export async function previewMode(
       currentTopN: DEFAULT_FINAL_TOP_N,
       judgeCount,
       initialThreshold
-    };
-  }
-
-  if (mode === "secondary") {
-    const count = await prisma.work.count({ where: { initialPassed: true } });
-    return {
-      mode,
-      count,
-      baseCount: count,
-      overflow: 0,
-      defaultTopN: DEFAULT_FINAL_TOP_N,
-      currentTopN: DEFAULT_FINAL_TOP_N
     };
   }
 

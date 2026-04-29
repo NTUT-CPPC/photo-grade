@@ -31,7 +31,7 @@ import { getRuleConfig, setRuleConfig } from "./services/rule-config-service.js"
 import { recomputeAllInitialPassed } from "./services/score-service.js";
 import { getServiceAccountEmail, getSheetSyncConfig, setSheetSyncConfig } from "./services/sheet-config-service.js";
 import { listWorks, metadataForWork } from "./services/work-service.js";
-import { processSheetSync } from "./services/sheet-service.js";
+import { processSheetSync, verifySheetSyncWorksheet } from "./services/sheet-service.js";
 import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
 
 await ensureDataDirs();
@@ -141,8 +141,45 @@ app.put(["/api/admin/sheet-sync/config", "/api/admin/sheet-config"], requireAuth
     const spreadsheet = firstString(req.body?.spreadsheet) ?? firstString(req.body?.shareLink);
     if (!spreadsheet) throw new Error("spreadsheet is required.");
     const worksheetTitle = firstString(req.body?.worksheetTitle);
-    const config = await setSheetSyncConfig({ spreadsheet, worksheetTitle });
-    res.json(toSheetConfigResponse(config, await getServiceAccountEmail()));
+    const { config: savedConfig, gidHint } = await setSheetSyncConfig({ spreadsheet, worksheetTitle });
+    let checkedConfig = savedConfig;
+    let checkResult: {
+      headerOk: boolean;
+      headerAction: string | null;
+      headerMessage: string | null;
+      worksheetTitle?: string;
+    } = {
+      headerOk: false,
+      headerAction: "檢查失敗",
+      headerMessage: null
+    };
+    try {
+      if (!savedConfig.spreadsheetId || savedConfig.source === "none") {
+        throw new Error("Google Sheet 目標未設定。");
+      }
+      const verified = await verifySheetSyncWorksheet({
+        target: {
+          source: savedConfig.source,
+          spreadsheetId: savedConfig.spreadsheetId,
+          worksheetTitle: savedConfig.worksheetTitle
+        },
+        gidHint
+      });
+      checkResult = {
+        headerOk: verified.headerOk,
+        headerAction: verified.headerAction,
+        headerMessage: verified.headerMessage,
+        worksheetTitle: verified.worksheetTitle
+      };
+      checkedConfig = await getSheetSyncConfig();
+    } catch (error) {
+      checkResult = {
+        headerOk: false,
+        headerAction: "檢查失敗",
+        headerMessage: error instanceof Error ? error.message : String(error)
+      };
+    }
+    res.json(toSheetConfigResponse(checkedConfig, await getServiceAccountEmail(), checkResult));
   } catch (error) {
     next(error);
   }
@@ -615,7 +652,11 @@ function toSheetConfigResponse(config: {
   spreadsheetUrl: string | null;
   worksheetTitle: string;
   updatedAt: string | null;
-}, serviceAccountEmail: string | null) {
+}, serviceAccountEmail: string | null, headerCheck?: {
+  headerOk: boolean;
+  headerAction: string | null;
+  headerMessage: string | null;
+}) {
   return {
     enabled: env.GOOGLE_SHEETS_ENABLED,
     source: config.source,
@@ -624,7 +665,10 @@ function toSheetConfigResponse(config: {
     shareLink: config.spreadsheetUrl ?? config.spreadsheetId ?? "",
     worksheetTitle: config.worksheetTitle,
     updatedAt: config.updatedAt,
-    serviceAccountEmail
+    serviceAccountEmail,
+    headerOk: headerCheck?.headerOk,
+    headerAction: headerCheck?.headerAction ?? null,
+    headerMessage: headerCheck?.headerMessage ?? null
   };
 }
 

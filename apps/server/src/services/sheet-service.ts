@@ -8,6 +8,15 @@ import { resolveSheetSyncTarget, setSheetSyncWorksheetTitle } from "./sheet-conf
 const CODE_HEADER = "作品編號";
 const LINK_HEADER = "作品連結";
 
+export interface SheetHeaderCheckResult {
+  worksheetTitle: string;
+  headerOk: boolean;
+  headerAction: string;
+  headerMessage: string;
+}
+
+type EnsureWorksheetAction = "matched" | "created_sheet" | "initialized_header" | "migrated_header";
+
 export async function processSheetSync(scoreIds?: string[]): Promise<void> {
   const outboxItems = await claimOutboxItems(scoreIds);
   if (!outboxItems.length) return;
@@ -80,6 +89,23 @@ export async function processSheetSync(scoreIds?: string[]): Promise<void> {
   }
 }
 
+export async function verifySheetSyncWorksheet(input: {
+  target: { source: "db" | "env"; spreadsheetId: string; worksheetTitle: string };
+  gidHint?: number | null;
+}): Promise<SheetHeaderCheckResult> {
+  const sheets = await sheetsClient();
+  const canonicalHeader = await buildCanonicalHeader([]);
+  const workspace = await ensureWritableWorksheet(sheets, input.target, canonicalHeader, {
+    gidHint: input.gidHint
+  });
+  return {
+    worksheetTitle: workspace.worksheetTitle,
+    headerOk: true,
+    headerAction: describeHeaderAction(workspace.action),
+    headerMessage: describeHeaderMessage(workspace.action, workspace.worksheetTitle)
+  };
+}
+
 async function buildCanonicalHeader(
   outboxItems: Array<{ score: { field: string } }>
 ): Promise<string[]> {
@@ -119,38 +145,50 @@ function compareScoreField(a: string, b: string): number {
 async function ensureWritableWorksheet(
   sheets: sheets_v4.Sheets,
   target: { source: "db" | "env"; spreadsheetId: string; worksheetTitle: string },
-  canonicalHeader: string[]
-): Promise<{ worksheetTitle: string; values: string[][] }> {
+  canonicalHeader: string[],
+  options: { gidHint?: number | null } = {}
+): Promise<{ worksheetTitle: string; values: string[][]; action: EnsureWorksheetAction }> {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: target.spreadsheetId });
   const sheetsList = meta.data.sheets ?? [];
-  const found = sheetsList.find((entry) => entry.properties?.title === target.worksheetTitle);
+  let worksheetTitle = target.worksheetTitle;
+  const gidSheet =
+    options.gidHint !== undefined && options.gidHint !== null
+      ? sheetsList.find((entry) => entry.properties?.sheetId === options.gidHint)
+      : undefined;
+  if (gidSheet?.properties?.title) {
+    worksheetTitle = gidSheet.properties.title;
+    if (target.source === "db" && worksheetTitle !== target.worksheetTitle) {
+      await setSheetSyncWorksheetTitle(worksheetTitle);
+    }
+  }
+  const found = sheetsList.find((entry) => entry.properties?.title === worksheetTitle);
 
   if (!found) {
-    await addWorksheet(sheets, target.spreadsheetId, target.worksheetTitle);
-    await writeHeaderRow(sheets, target.spreadsheetId, target.worksheetTitle, canonicalHeader);
-    return { worksheetTitle: target.worksheetTitle, values: [canonicalHeader.slice()] };
+    await addWorksheet(sheets, target.spreadsheetId, worksheetTitle);
+    await writeHeaderRow(sheets, target.spreadsheetId, worksheetTitle, canonicalHeader);
+    return { worksheetTitle, values: [canonicalHeader.slice()], action: "created_sheet" };
   }
 
-  const currentValues = await readWorksheetValues(sheets, target.spreadsheetId, target.worksheetTitle);
+  const currentValues = await readWorksheetValues(sheets, target.spreadsheetId, worksheetTitle);
   const isBlank = currentValues.length === 0 || currentValues.every((row) => row.every((cell) => String(cell).trim() === ""));
   if (isBlank) {
-    await writeHeaderRow(sheets, target.spreadsheetId, target.worksheetTitle, canonicalHeader);
-    return { worksheetTitle: target.worksheetTitle, values: [canonicalHeader.slice()] };
+    await writeHeaderRow(sheets, target.spreadsheetId, worksheetTitle, canonicalHeader);
+    return { worksheetTitle, values: [canonicalHeader.slice()], action: "initialized_header" };
   }
 
   const existingHeader = normalizeHeader(currentValues[0] ?? []);
   if (headersMatch(existingHeader, canonicalHeader)) {
     const normalized = [canonicalHeader.slice(), ...currentValues.slice(1).map((row) => trimRow(row, canonicalHeader.length))];
-    return { worksheetTitle: target.worksheetTitle, values: normalized };
+    return { worksheetTitle, values: normalized, action: "matched" };
   }
 
-  const nextWorksheetTitle = uniqueWorksheetTitle(target.worksheetTitle, sheetsList.map((entry) => entry.properties?.title ?? ""));
+  const nextWorksheetTitle = uniqueWorksheetTitle(worksheetTitle, sheetsList.map((entry) => entry.properties?.title ?? ""));
   await addWorksheet(sheets, target.spreadsheetId, nextWorksheetTitle);
   await writeHeaderRow(sheets, target.spreadsheetId, nextWorksheetTitle, canonicalHeader);
   if (target.source === "db") {
     await setSheetSyncWorksheetTitle(nextWorksheetTitle);
   }
-  return { worksheetTitle: nextWorksheetTitle, values: [canonicalHeader.slice()] };
+  return { worksheetTitle: nextWorksheetTitle, values: [canonicalHeader.slice()], action: "migrated_header" };
 }
 
 async function addWorksheet(sheets: sheets_v4.Sheets, spreadsheetId: string, worksheetTitle: string): Promise<void> {
@@ -228,6 +266,26 @@ function uniqueWorksheetTitle(baseTitle: string, takenTitles: string[]): string 
 
 function quoteSheetTitle(title: string): string {
   return `'${title.replace(/'/g, "''")}'`;
+}
+
+function describeHeaderAction(action: EnsureWorksheetAction): string {
+  if (action === "created_sheet") return "已建立工作表";
+  if (action === "initialized_header") return "已建立 Header";
+  if (action === "migrated_header") return "Header 不符，已建立新工作表";
+  return "Header 正常";
+}
+
+function describeHeaderMessage(action: EnsureWorksheetAction, worksheetTitle: string): string {
+  if (action === "created_sheet") {
+    return `已建立工作表「${worksheetTitle}」並寫入標準 Header。`;
+  }
+  if (action === "initialized_header") {
+    return `工作表「${worksheetTitle}」原本空白，已寫入標準 Header。`;
+  }
+  if (action === "migrated_header") {
+    return `原工作表 Header 不符，已建立「${worksheetTitle}」並切換後續同步目標。`;
+  }
+  return `工作表「${worksheetTitle}」Header 檢查通過。`;
 }
 
 async function claimOutboxItems(scoreIds?: string[]) {

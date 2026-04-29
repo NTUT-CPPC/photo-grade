@@ -709,7 +709,7 @@ export function AdminPage() {
                     type="button"
                     onClick={() => void saveSheetConfig()}
                     disabled={sheetBusy}
-                    title="儲存後會由後端解析 Spreadsheet ID，並在同步時檢查/建立工作表 Header。"
+                    title="儲存後會由後端解析 Spreadsheet ID，並立即檢查/建立工作表 Header。"
                   >
                     <Save size={16} />
                     {sheetBusy ? "儲存中…" : "儲存設定"}

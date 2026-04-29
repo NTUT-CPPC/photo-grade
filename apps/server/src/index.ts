@@ -25,6 +25,9 @@ import { addJudge, deleteJudge, listJudges, replaceJudges } from "./services/jud
 import { regenerateSidecarMetadata } from "./services/media-service.js";
 import { previewMode } from "./services/mode-preview-service.js";
 import { getOrderingState, regenerateShuffle, setActiveMode, setDefaultMode } from "./services/ordering-service.js";
+import { setPresentationState } from "./services/presentation-service.js";
+import { getRuleConfig, setRuleConfig } from "./services/rule-config-service.js";
+import { recomputeAllInitialPassed } from "./services/score-service.js";
 import { listWorks, metadataForWork } from "./services/work-service.js";
 import { processSheetSync } from "./services/sheet-service.js";
 import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
@@ -390,6 +393,42 @@ app.post("/api/sync/ordering", requireAuth(), async (req, res, next) => {
     const state = await setActiveMode(activeMode);
     emitOrderingChanged(state);
     res.json(state);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/rule-config", requireAuth(), async (_req, res, next) => {
+  try {
+    res.json(await getRuleConfig());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/admin/rule-config", requireAuth(), async (req, res, next) => {
+  try {
+    const body = (req.body ?? {}) as { defaultFinalTopN?: unknown; defaultSecondaryThreshold?: unknown };
+    const patch: { defaultFinalTopN?: number; defaultSecondaryThreshold?: number | null } = {};
+    if (typeof body.defaultFinalTopN === "number") patch.defaultFinalTopN = body.defaultFinalTopN;
+    if (body.defaultSecondaryThreshold === null) patch.defaultSecondaryThreshold = null;
+    else if (typeof body.defaultSecondaryThreshold === "number")
+      patch.defaultSecondaryThreshold = body.defaultSecondaryThreshold;
+    const config = await setRuleConfig(patch);
+
+    // Propagate the new defaults to live presentation state so existing host
+    // overrides don't mask the new rule. Clearing presentation overrides means
+    // the next preview/list will read the admin default through the fallback.
+    const stateChanges: { finalCutoff?: number; secondaryThreshold?: number | null } = {};
+    if (patch.defaultFinalTopN !== undefined) stateChanges.finalCutoff = config.defaultFinalTopN;
+    if (patch.defaultSecondaryThreshold !== undefined) stateChanges.secondaryThreshold = null;
+    if (Object.keys(stateChanges).length > 0) {
+      await setPresentationState(stateChanges);
+    } else if (patch.defaultSecondaryThreshold !== undefined) {
+      // Even if presentation state didn't change, retroactively re-apply.
+      await recomputeAllInitialPassed();
+    }
+    res.json(config);
   } catch (error) {
     next(error);
   }

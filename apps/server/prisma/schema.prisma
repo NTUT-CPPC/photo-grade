@@ -77,6 +77,13 @@ model OrderingState {
   updatedAt    DateTime  @updatedAt
 }
 
+model RuleConfig {
+  id                        Int      @id @default(1)
+  defaultFinalTopN          Int      @default(60)
+  defaultSecondaryThreshold Int?
+  updatedAt                 DateTime @updatedAt
+}
+
 model SheetSyncOutbox {
   id            String    @id @default(cuid())
   scoreId       String

@@ -3,7 +3,7 @@ import { prisma } from "../prisma.js";
 import { listJudges } from "./judge-service.js";
 import { getPresentationState } from "./presentation-service.js";
 import { getActiveInitialThreshold, getDefaultInitialThreshold } from "./score-service.js";
-import { DEFAULT_FINAL_TOP_N } from "./work-service.js";
+import { DEFAULT_FINAL_TOP_N, getEffectiveDefaultFinalTopN } from "./work-service.js";
 
 export interface ModePreviewOptions {
   topN?: number;
@@ -21,6 +21,8 @@ export async function previewMode(
   }
   const mode = modeInput as JudgingMode;
 
+  const defaultTopN = await getEffectiveDefaultFinalTopN();
+
   if (mode === "initial") {
     const count = await prisma.work.count();
     return {
@@ -28,8 +30,8 @@ export async function previewMode(
       count,
       baseCount: count,
       overflow: 0,
-      defaultTopN: DEFAULT_FINAL_TOP_N,
-      currentTopN: DEFAULT_FINAL_TOP_N
+      defaultTopN,
+      currentTopN: defaultTopN
     };
   }
 
@@ -54,8 +56,8 @@ export async function previewMode(
       count: passing,
       baseCount: passing,
       overflow: 0,
-      defaultTopN: DEFAULT_FINAL_TOP_N,
-      currentTopN: DEFAULT_FINAL_TOP_N,
+      defaultTopN,
+      currentTopN: defaultTopN,
       judgeCount,
       initialThreshold: threshold,
       defaultThreshold,
@@ -67,9 +69,9 @@ export async function previewMode(
   let topN = options.topN;
   if (topN === undefined) {
     const presentation = await getPresentationState();
-    topN = presentation.finalCutoff ?? DEFAULT_FINAL_TOP_N;
+    topN = presentation.finalCutoff ?? defaultTopN;
   }
-  if (!Number.isInteger(topN) || topN < 1) topN = DEFAULT_FINAL_TOP_N;
+  if (!Number.isInteger(topN) || topN < 1) topN = defaultTopN;
 
   const works = await prisma.work.findMany({ select: { id: true, secondaryTotal: true } });
   const ranked = [...works].sort((a, b) => b.secondaryTotal - a.secondaryTotal);
@@ -90,7 +92,7 @@ export async function previewMode(
     count,
     baseCount: topN,
     overflow,
-    defaultTopN: DEFAULT_FINAL_TOP_N,
+    defaultTopN,
     currentTopN: topN
   };
 }

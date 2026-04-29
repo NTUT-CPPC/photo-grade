@@ -5,8 +5,14 @@ import { prisma } from "../prisma.js";
 import { dataDirs, publicAssetUrl } from "../storage.js";
 import { getOrderingState } from "./ordering-service.js";
 import { getPresentationState } from "./presentation-service.js";
+import { getRuleConfig } from "./rule-config-service.js";
 
 export const DEFAULT_FINAL_TOP_N = 60;
+
+export async function getEffectiveDefaultFinalTopN(): Promise<number> {
+  const ruleConfig = await getRuleConfig();
+  return ruleConfig.defaultFinalTopN > 0 ? ruleConfig.defaultFinalTopN : DEFAULT_FINAL_TOP_N;
+}
 
 export interface ListWorksOptions {
   topN?: number;
@@ -24,9 +30,9 @@ export async function listWorks(
     let topN = options.topN;
     if (topN === undefined) {
       const presentation = await getPresentationState();
-      topN = presentation.finalCutoff ?? DEFAULT_FINAL_TOP_N;
+      topN = presentation.finalCutoff ?? (await getEffectiveDefaultFinalTopN());
     }
-    if (!Number.isInteger(topN) || topN < 1) topN = DEFAULT_FINAL_TOP_N;
+    if (!Number.isInteger(topN) || topN < 1) topN = await getEffectiveDefaultFinalTopN();
     const ranked = [...sorted].sort((a, b) => b.secondaryTotal - a.secondaryTotal);
     const accepted: typeof ranked = [];
     let lastScore: number | null = null;

@@ -86,20 +86,22 @@ function normalizeScoreInput(input: ScoreInput): NormalizedScoreInput {
   };
 }
 
-type DerivedClient = Pick<typeof prisma, "score" | "work" | "judge" | "presentationState">;
+type DerivedClient = Pick<typeof prisma, "score" | "work" | "judge" | "presentationState" | "ruleConfig">;
 
 export async function getActiveInitialThreshold(client: DerivedClient = prisma): Promise<number> {
-  const [presentation, judgeCount] = await Promise.all([
-    client.presentationState.findUnique({ where: { id: 1 } }),
-    client.judge.count()
-  ]);
+  const presentation = await client.presentationState.findUnique({ where: { id: 1 } });
   const override = presentation?.secondaryThreshold ?? null;
   if (override !== null && override > 0) return override;
-  return Math.ceil(Math.max(judgeCount, 1) / 2);
+  return getDefaultInitialThreshold(client);
 }
 
 export async function getDefaultInitialThreshold(client: DerivedClient = prisma): Promise<number> {
-  const judgeCount = await client.judge.count();
+  const [judgeCount, ruleConfig] = await Promise.all([
+    client.judge.count(),
+    client.ruleConfig.findUnique({ where: { id: 1 } })
+  ]);
+  const adminDefault = ruleConfig?.defaultSecondaryThreshold ?? null;
+  if (adminDefault !== null && adminDefault > 0) return adminDefault;
   return Math.ceil(Math.max(judgeCount, 1) / 2);
 }
 

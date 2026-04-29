@@ -38,6 +38,12 @@ export interface OrderingStatePayload {
   hasShuffle: boolean;
 }
 
+export interface RuleConfigPayload {
+  defaultFinalTopN: number;
+  defaultSecondaryThreshold: number | null;
+  updatedAt: string;
+}
+
 export interface ModePreviewResult {
   mode: JudgingMode;
   count: number;

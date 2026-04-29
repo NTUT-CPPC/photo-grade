@@ -1,5 +1,6 @@
 import type { ModePreviewResult } from "@photo-grade/shared";
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { modeLabel } from "../state/gallery";
 import type { Mode } from "../types";
 
@@ -47,7 +48,7 @@ export function ModeSwitchDialog({
     onTopNChange(next);
   };
 
-  return (
+  return createPortal(
     <div className="score-detail-backdrop" onClick={onCancel} role="presentation">
       <div
         className="score-detail mode-switch-dialog"
@@ -96,7 +97,8 @@ export function ModeSwitchDialog({
           </button>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -120,28 +122,28 @@ function PreviewBody({
   }
 
   if (toMode === "initial") {
-    const threshold = preview.initialThreshold;
-    const judgeCount = preview.judgeCount;
     return (
       <div className="mode-switch-dialog__row">
         <p>
-          共 <strong>{preview.count}</strong> 件作品將進入初評。
+          共 <strong>{preview.count}</strong> 件作品（初評不做篩選）。
         </p>
-        {threshold && judgeCount ? (
-          <p className="mode-switch-dialog__hint">
-            需 {threshold}/{judgeCount} 票通過
-          </p>
-        ) : null}
       </div>
     );
   }
 
   if (toMode === "secondary") {
+    const threshold = preview.initialThreshold;
+    const judgeCount = preview.judgeCount;
     return (
       <div className="mode-switch-dialog__row">
         <p>
-          共 <strong>{preview.count}</strong> 件初評通過、進入複評。
+          共 <strong>{preview.count}</strong> 件通過初評、進入複評。
         </p>
+        {threshold && judgeCount ? (
+          <p className="mode-switch-dialog__hint">
+            初評通過門檻：{threshold}/{judgeCount} 票（過半數）
+          </p>
+        ) : null}
       </div>
     );
   }

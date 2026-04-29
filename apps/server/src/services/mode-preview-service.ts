@@ -73,7 +73,10 @@ export async function previewMode(
   }
   if (!Number.isInteger(topN) || topN < 1) topN = defaultTopN;
 
-  const works = await prisma.work.findMany({ select: { id: true, secondaryTotal: true } });
+  const works = await prisma.work.findMany({
+    where: { initialPassed: true },
+    select: { id: true, secondaryTotal: true }
+  });
   const ranked = [...works].sort((a, b) => b.secondaryTotal - a.secondaryTotal);
   const accepted: typeof ranked = [];
   let lastScore: number | null = null;

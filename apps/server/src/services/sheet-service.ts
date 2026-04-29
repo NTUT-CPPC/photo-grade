@@ -4,9 +4,13 @@ import type { sheets_v4 } from "googleapis";
 import { prisma } from "../prisma.js";
 import { env } from "../env.js";
 import { resolveSheetSyncTarget, setSheetSyncWorksheetTitle } from "./sheet-config-service.js";
-
-const CODE_HEADER = "作品編號";
-const LINK_HEADER = "作品連結";
+import {
+  CODE_HEADER,
+  LINK_HEADER,
+  UPDATED_AT_HEADER,
+  buildCanonicalHeaderForJudgeCount,
+  formatUpdatedAt
+} from "./sheet-header.js";
 
 export interface SheetHeaderCheckResult {
   worksheetTitle: string;
@@ -40,14 +44,17 @@ export async function processSheetSync(scoreIds?: string[]): Promise<void> {
     return;
   }
 
+  const updatedAtStamp = formatUpdatedAt(new Date());
+
   try {
     const sheets = await sheetsClient();
-    const canonicalHeader = await buildCanonicalHeader(outboxItems);
+    const canonicalHeader = await buildCanonicalHeader();
     const workspace = await ensureWritableWorksheet(sheets, target, canonicalHeader);
     const values = workspace.values;
 
     const codeCol = canonicalHeader.indexOf(CODE_HEADER);
     const linkCol = canonicalHeader.indexOf(LINK_HEADER);
+    const updatedAtCol = canonicalHeader.indexOf(UPDATED_AT_HEADER);
     const rowIndexByCode = new Map<string, number>();
     for (let idx = 1; idx < values.length; idx++) {
       const row = values[idx] ?? [];
@@ -55,6 +62,7 @@ export async function processSheetSync(scoreIds?: string[]): Promise<void> {
       if (code) rowIndexByCode.set(code, idx);
     }
 
+    const touchedRows = new Set<number>();
     for (const item of outboxItems) {
       const score = item.score;
       const fieldCol = canonicalHeader.indexOf(score.field);
@@ -74,6 +82,14 @@ export async function processSheetSync(scoreIds?: string[]): Promise<void> {
       row[codeCol] = score.work.code;
       row[linkCol] = score.work.sourceUrl ?? "";
       row[fieldCol] = String(score.value);
+      touchedRows.add(rowIdx);
+    }
+
+    if (updatedAtCol >= 0) {
+      for (const rowIdx of touchedRows) {
+        const row = ensureRow(values, rowIdx, canonicalHeader.length);
+        row[updatedAtCol] = updatedAtStamp;
+      }
     }
 
     await sheets.spreadsheets.values.update({
@@ -94,7 +110,7 @@ export async function verifySheetSyncWorksheet(input: {
   gidHint?: number | null;
 }): Promise<SheetHeaderCheckResult> {
   const sheets = await sheetsClient();
-  const canonicalHeader = await buildCanonicalHeader([]);
+  const canonicalHeader = await buildCanonicalHeader();
   const workspace = await ensureWritableWorksheet(sheets, input.target, canonicalHeader, {
     gidHint: input.gidHint
   });
@@ -106,40 +122,9 @@ export async function verifySheetSyncWorksheet(input: {
   };
 }
 
-async function buildCanonicalHeader(
-  outboxItems: Array<{ score: { field: string } }>
-): Promise<string[]> {
-  const dbFields = await prisma.score.findMany({
-    select: { field: true },
-    distinct: ["field"]
-  });
-  const fields = new Set<string>(dbFields.map((entry) => entry.field));
-  for (const item of outboxItems) fields.add(item.score.field);
-  const sortedFields = [...fields].sort(compareScoreField);
-  return [CODE_HEADER, LINK_HEADER, ...sortedFields];
-}
-
-function compareScoreField(a: string, b: string): number {
-  const rank = (field: string): [number, number, string] => {
-    if (field === "初評") return [0, 0, field];
-
-    const secondary = field.match(/^複評(\d+)$/);
-    if (secondary) return [1, Number(secondary[1]), field];
-
-    const final = field.match(/^決評(美感|故事|創意)(\d+)$/);
-    if (final) {
-      const criterionOrder = final[1] === "美感" ? 0 : final[1] === "故事" ? 1 : 2;
-      return [2 + criterionOrder, Number(final[2]), field];
-    }
-
-    return [9, Number.MAX_SAFE_INTEGER, field];
-  };
-
-  const ar = rank(a);
-  const br = rank(b);
-  if (ar[0] !== br[0]) return ar[0] - br[0];
-  if (ar[1] !== br[1]) return ar[1] - br[1];
-  return ar[2].localeCompare(br[2], "zh-Hant");
+async function buildCanonicalHeader(): Promise<string[]> {
+  const judgeCount = await prisma.judge.count();
+  return buildCanonicalHeaderForJudgeCount(judgeCount);
 }
 
 async function ensureWritableWorksheet(

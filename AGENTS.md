@@ -129,6 +129,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] Admin 頁選檔即自動 dry-run；用 `AbortController` 中斷舊 fetch，移除手動「Dry run」按鈕。
 - [x] Admin 頁拆 `dryRunBusy` / `confirmBusy`；dry-run errors 時 Confirm disabled 並顯示原因。
 - [x] Admin progress panel 顯示批次檔名 + 相對時間；完成或非 worker-offline 錯誤時顯示「Start new import」重設。
+- [x] Compose 對外 port 改為僅使用 `PORT` 變數（移除 `APP_PORT`），避免 host/container port 設定分離造成誤配。
 
 ### In Progress / Next
 

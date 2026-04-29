@@ -109,12 +109,14 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
   - `c8e50df feat: add sortable judge settings and dynamic score fields`
   - `1f6b692 fix: load all configured judges in score page`
   - `26f95a0 feat: add optional submission numbering for imports`
+  - `d0a7080 fix: support provider-specific oidc authorization params`
 - [x] Basic Auth 帳密簡化為單一 `AUTH_USERNAME`/`AUTH_PASSWORD`，移除 host/score/admin 三組。
 - [x] 任何成功登入皆可使用 `/host`、`/score`、`/admin`，不再做角色分流。
 - [x] 加入 OIDC Authorization Code (PKCE) 登入；以 `AUTH_MODE=basic|oidc` 切換。
 - [x] OIDC 模式使用 `express-session` + `connect-redis`（共用 `REDIS_URL`）；Socket.IO handshake 也共用 session。
 - [x] 前端 TopNav 依 `/api/runtime-config` 回傳的 `authMode` 切換 Login / Logout 行為。
 - [x] README 新增「登入模式 (Auth)」段落，列出 Basic / OIDC 環境變數與常見 OP 設定提示。
+- [x] OIDC authorization URL 支援 provider-specific query params（`OIDC_AUTHORIZATION_PARAMS`）；Synology SSO 可設 `synossoJSSDK=false` 避免被導到 DSM JS SDK flow 的 syntax/error 頁。
 - [x] HEIC 上傳於 import 時自動轉 JPEG（`heic-convert`），原 HEIC 檔案以 JPEG 取代寫入 originals。
 - [x] Admin import 改為單一檔案 picker + drag-and-drop；dry-run details 摺疊顯示。
 - [x] `tmp/` 加入 `.gitignore`，repo URL 更新為 `NTUT-CPPC/photo-grade`。
@@ -171,6 +173,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - `node_modules`、build output、`data` 都是 ignored，不應提交。
 - 初評 pass 門檻為 `Math.ceil(judgeCount/2)`，於 `score-service.recomputeWorkDerivedScores` 在每次 score 寫入時依當下 `prisma.judge.count()` 重算。已知限制：當管理者於評審清單變動（新增/刪除）後，先前已寫入的 `Work.initialPassed` 不會自動重算，要等到該作品下一次有 score 寫入才會更新。需要時可手動觸發 score upsert 或之後加 admin reflow API。
 - `OrderingState` 的 `shuffleOrder` 只在 admin `setDefaultMode("shuffle")` 或 `regenerateShuffle()` 才重洗；admin 切回 sequential 不會清掉，方便 host 即時切換回 shuffle 用同一份順序。新增/刪除 `Work` 後若想保留新作品也納入隨機，要 admin 觸發 regenerate。
+- Synology SSO 使用 `/webman/sso` issuer 時，若登入導到 DSM syntax/error 頁，確認 `OIDC_AUTHORIZATION_PARAMS=synossoJSSDK=false` 且 OP 端 callback URL 完全等於 `https://<app-domain>/auth/callback`。本機 `tmp/docker-compose.yaml.production.yml` 已加此設定，但 `tmp/` 是 ignored，不會進 commit。
 
 ## Architecture
 

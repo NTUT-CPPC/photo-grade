@@ -77,6 +77,8 @@ cd photo-grade
 
 ---
 
+> 💡 **要部署在 Synology NAS 上嗎？** 請改看 [`docs/synology-deploy.md`](docs/synology-deploy.md)——這份指南已經針對 DSM Container Manager 的「專案」功能調整過，包含 DDNS、Let's Encrypt 憑證、反向代理伺服器設定。本章主要面向 Linux/macOS/Windows + Docker Desktop 的命令列部署。
+
 ## 3. 快速啟動（Docker Compose）
 
 ### 步驟 1：建立 `.env`
@@ -594,9 +596,3 @@ docker compose images
 docker compose pull
 docker compose up -d app worker
 ```
-
----
-
-## 授權
-
-MIT。歡迎其他單位 fork 改作為自己的徵件評分系統。

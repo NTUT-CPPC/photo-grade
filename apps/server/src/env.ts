@@ -23,7 +23,6 @@ const EnvSchema = z
     OIDC_CLIENT_SECRET: z.string().optional(),
     OIDC_REDIRECT_URI: z.string().optional(),
     OIDC_SCOPES: z.string().default("openid profile email"),
-    OIDC_AUTHORIZATION_PARAMS: z.string().optional(),
     OIDC_POST_LOGOUT_REDIRECT_URI: z.string().optional(),
     GOOGLE_SHEETS_ENABLED: z.coerce.boolean().default(false),
     GOOGLE_SHEET_ID: z.string().optional(),

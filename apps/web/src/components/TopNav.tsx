@@ -16,6 +16,7 @@ import {
   setActiveOrdering,
   setFinalCutoff,
   setMode as setModeApi,
+  setSecondaryThreshold,
   type AuthMode,
   type AuthStatus
 } from "../api/client";
@@ -59,6 +60,7 @@ export function TopNav() {
   const [viewQrCode, setViewQrCode] = useState("");
   const [hostMode, setHostMode] = useState<Mode>("initial");
   const [finalCutoff, setFinalCutoffState] = useState<number | null>(null);
+  const [secondaryThreshold, setSecondaryThresholdState] = useState<number | null>(null);
   const [ordering, setOrdering] = useState<OrderingStatePayload | null>(null);
   const [orderingBusy, setOrderingBusy] = useState(false);
   const [pendingMode, setPendingMode] = useState<Mode | null>(null);
@@ -66,6 +68,7 @@ export function TopNav() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [dialogTopN, setDialogTopN] = useState<number | null>(null);
+  const [dialogThreshold, setDialogThreshold] = useState<number | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const previewReqId = useRef(0);
   const publicMode = isActive(path, "/view");
@@ -145,7 +148,11 @@ export function TopNav() {
       .catch(() => undefined);
     getPresentationState()
       .then((state) => {
-        if (live && typeof state.finalCutoff === "number") setFinalCutoffState(state.finalCutoff);
+        if (!live) return;
+        if (typeof state.finalCutoff === "number") setFinalCutoffState(state.finalCutoff);
+        setSecondaryThresholdState(
+          typeof state.secondaryThreshold === "number" ? state.secondaryThreshold : null
+        );
       })
       .catch(() => undefined);
     const off = onSyncState((state) => {
@@ -153,6 +160,9 @@ export function TopNav() {
       if (state.mode) setHostMode(state.mode);
       const cutoff = (state as { finalCutoff?: unknown }).finalCutoff;
       if (typeof cutoff === "number") setFinalCutoffState(cutoff);
+      const threshold = (state as { secondaryThreshold?: unknown }).secondaryThreshold;
+      if (typeof threshold === "number") setSecondaryThresholdState(threshold);
+      else if (threshold === null) setSecondaryThresholdState(null);
     });
     return () => {
       live = false;
@@ -196,17 +206,22 @@ export function TopNav() {
   };
 
   const fetchPreview = useCallback(
-    async (mode: Mode, topN: number | null) => {
+    async (mode: Mode, topN: number | null, threshold: number | null) => {
       const reqId = ++previewReqId.current;
       setPreviewLoading(true);
       setPreviewError(null);
       try {
-        const options = topN !== null ? { topN } : {};
+        const options: { topN?: number; threshold?: number } = {};
+        if (topN !== null) options.topN = topN;
+        if (threshold !== null) options.threshold = threshold;
         const result = await getModePreview(mode, options);
         if (previewReqId.current !== reqId) return;
         setPreviewResult(result);
         if (mode === "final") {
           setDialogTopN((current) => current ?? result.currentTopN);
+        }
+        if (mode === "secondary" && typeof result.currentThreshold === "number") {
+          setDialogThreshold((current) => current ?? result.currentThreshold!);
         }
       } catch (error) {
         if (previewReqId.current !== reqId) return;
@@ -223,6 +238,7 @@ export function TopNav() {
     setPreviewResult(null);
     setPreviewError(null);
     setDialogTopN(null);
+    setDialogThreshold(null);
     setConfirmBusy(false);
     setPreviewLoading(false);
     previewReqId.current += 1;
@@ -237,18 +253,26 @@ export function TopNav() {
     setPreviewError(null);
     setConfirmBusy(false);
     const initialTopN = mode === "final" ? finalCutoff : null;
+    const initialThreshold = mode === "secondary" ? secondaryThreshold : null;
     setDialogTopN(initialTopN);
-    void fetchPreview(mode, initialTopN);
+    setDialogThreshold(initialThreshold);
+    void fetchPreview(mode, initialTopN, initialThreshold);
   };
 
   const handleDialogTopNChange = useCallback((next: number | null) => {
     setDialogTopN(next);
   }, []);
 
+  const handleDialogThresholdChange = useCallback((next: number | null) => {
+    setDialogThreshold(next);
+  }, []);
+
   const handleDialogRefresh = useCallback(() => {
     if (!pendingMode) return;
-    void fetchPreview(pendingMode, pendingMode === "final" ? dialogTopN : null);
-  }, [pendingMode, dialogTopN, fetchPreview]);
+    const topN = pendingMode === "final" ? dialogTopN : null;
+    const threshold = pendingMode === "secondary" ? dialogThreshold : null;
+    void fetchPreview(pendingMode, topN, threshold);
+  }, [pendingMode, dialogTopN, dialogThreshold, fetchPreview]);
 
   const handleDialogConfirm = useCallback(async () => {
     if (!pendingMode) return;
@@ -258,6 +282,14 @@ export function TopNav() {
         await setFinalCutoff(dialogTopN);
         setFinalCutoffState(dialogTopN);
       }
+      if (
+        pendingMode === "secondary" &&
+        dialogThreshold !== null &&
+        dialogThreshold !== secondaryThreshold
+      ) {
+        await setSecondaryThreshold(dialogThreshold);
+        setSecondaryThresholdState(dialogThreshold);
+      }
       await setModeApi(pendingMode);
       setHostMode(pendingMode);
       emitMode(pendingMode);
@@ -266,7 +298,7 @@ export function TopNav() {
       setPreviewError(error instanceof Error ? error.message : String(error));
       setConfirmBusy(false);
     }
-  }, [pendingMode, dialogTopN, finalCutoff, closeDialog]);
+  }, [pendingMode, dialogTopN, dialogThreshold, finalCutoff, secondaryThreshold, closeDialog]);
 
   const handleSelectOrdering = (next: OrderingMode) => {
     if (orderingBusy) return;
@@ -400,7 +432,9 @@ export function TopNav() {
           loading={previewLoading || confirmBusy}
           error={previewError}
           topN={dialogTopN}
+          threshold={dialogThreshold}
           onTopNChange={handleDialogTopNChange}
+          onThresholdChange={handleDialogThresholdChange}
           onRefresh={handleDialogRefresh}
           onConfirm={handleDialogConfirm}
           onCancel={closeDialog}

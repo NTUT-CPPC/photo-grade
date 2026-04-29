@@ -191,11 +191,14 @@ export async function getPresentationState(): Promise<PresentationStatePayload> 
 
 export async function getModePreview(
   mode: Mode,
-  options: { topN?: number } = {}
+  options: { topN?: number; threshold?: number } = {}
 ): Promise<ModePreviewResult> {
   const params = new URLSearchParams({ mode });
   if (options.topN !== undefined && Number.isFinite(options.topN)) {
     params.set("topN", String(Math.trunc(options.topN)));
+  }
+  if (options.threshold !== undefined && Number.isFinite(options.threshold)) {
+    params.set("threshold", String(Math.trunc(options.threshold)));
   }
   return request<ModePreviewResult>(`/api/host/preview-mode?${params.toString()}`);
 }
@@ -204,6 +207,14 @@ export async function setFinalCutoff(topN: number): Promise<void> {
   await firstOk<void>(["/api/host/state"], {
     method: "POST",
     body: JSON.stringify({ finalCutoff: topN }),
+    allowEmpty: true
+  });
+}
+
+export async function setSecondaryThreshold(threshold: number | null): Promise<void> {
+  await firstOk<void>(["/api/host/state"], {
+    method: "POST",
+    body: JSON.stringify({ secondaryThreshold: threshold }),
     allowEmpty: true
   });
 }

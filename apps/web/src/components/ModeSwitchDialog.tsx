@@ -11,7 +11,9 @@ type Props = {
   loading: boolean;
   error: string | null;
   topN: number | null;
+  threshold: number | null;
   onTopNChange: (topN: number | null) => void;
+  onThresholdChange: (threshold: number | null) => void;
   onRefresh: () => void;
   onConfirm: () => void;
   onCancel: () => void;
@@ -24,7 +26,9 @@ export function ModeSwitchDialog({
   loading,
   error,
   topN,
+  threshold,
   onTopNChange,
+  onThresholdChange,
   onRefresh,
   onConfirm,
   onCancel
@@ -37,16 +41,18 @@ export function ModeSwitchDialog({
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel]);
 
-  const handleTopNInput = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = event.target.value;
-    if (raw === "") {
-      onTopNChange(null);
-      return;
-    }
-    const next = Number(raw);
-    if (!Number.isFinite(next) || !Number.isInteger(next) || next < 1) return;
-    onTopNChange(next);
-  };
+  const handleIntInput =
+    (setter: (next: number | null) => void) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const raw = event.target.value;
+      if (raw === "") {
+        setter(null);
+        return;
+      }
+      const next = Number(raw);
+      if (!Number.isFinite(next) || !Number.isInteger(next) || next < 1) return;
+      setter(next);
+    };
 
   return createPortal(
     <div className="score-detail-backdrop" onClick={onCancel} role="presentation">
@@ -72,7 +78,9 @@ export function ModeSwitchDialog({
               toMode={toMode}
               preview={preview}
               topN={topN}
-              onTopNInput={handleTopNInput}
+              threshold={threshold}
+              onTopNInput={handleIntInput(onTopNChange)}
+              onThresholdInput={handleIntInput(onThresholdChange)}
               onRefresh={onRefresh}
               loading={loading}
             />
@@ -106,14 +114,18 @@ function PreviewBody({
   toMode,
   preview,
   topN,
+  threshold,
   onTopNInput,
+  onThresholdInput,
   onRefresh,
   loading
 }: {
   toMode: Mode;
   preview: ModePreviewResult | null;
   topN: number | null;
+  threshold: number | null;
   onTopNInput: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  onThresholdInput: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onRefresh: () => void;
   loading: boolean;
 }) {
@@ -132,18 +144,39 @@ function PreviewBody({
   }
 
   if (toMode === "secondary") {
-    const threshold = preview.initialThreshold;
     const judgeCount = preview.judgeCount;
+    const defaultThreshold = preview.defaultThreshold;
     return (
       <div className="mode-switch-dialog__row">
         <p>
-          共 <strong>{preview.count}</strong> 件通過初評、進入複評。
+          預計 <strong>{preview.count}</strong> 件通過初評、進入複評
+          {judgeCount ? `（評審共 ${judgeCount} 位）` : ""}。
         </p>
-        {threshold && judgeCount ? (
-          <p className="mode-switch-dialog__hint">
-            初評通過門檻：{threshold}/{judgeCount} 票（過半數）
-          </p>
-        ) : null}
+        <div className="mode-switch-dialog__topn">
+          <label htmlFor="mode-switch-threshold">通過票數門檻</label>
+          <input
+            id="mode-switch-threshold"
+            type="number"
+            min={1}
+            step={1}
+            max={judgeCount ?? undefined}
+            value={threshold ?? ""}
+            onChange={onThresholdInput}
+            disabled={loading}
+          />
+          <button
+            type="button"
+            className="top-nav-mode-btn"
+            onClick={onRefresh}
+            disabled={loading || threshold === null}
+          >
+            重新計算
+          </button>
+        </div>
+        <p className="mode-switch-dialog__hint">
+          臨時調整不會覆寫 Admin 預設值
+          {defaultThreshold && judgeCount ? `（預設過半數：${defaultThreshold}/${judgeCount}）` : ""}
+        </p>
       </div>
     );
   }

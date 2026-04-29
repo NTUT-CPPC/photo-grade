@@ -156,13 +156,14 @@ export function useGallery(role: "host" | "score" | "view") {
     setLoading(true);
     setError(null);
     try {
-      const [nextItems, nextRows, nextIdx, nextMode, nextOrdering] = await Promise.all([
-        getItems(),
+      const fetchedMode = await getMode().catch(() => "initial" as Mode);
+      const [nextItems, nextRows, nextIdx, nextOrdering] = await Promise.all([
+        getItems(fetchedMode),
         getSheetRecords().catch(() => []),
         getIdx().catch(() => 0),
-        getMode().catch(() => "initial" as Mode),
         getOrdering().catch(() => null)
       ]);
+      const nextMode = fetchedMode;
       const activeOrdering: OrderingMode = nextOrdering?.activeMode ?? "sequential";
       const nextShuffle = nextOrdering?.shuffleOrder ?? [];
       const ordered = orderItems(nextItems, activeOrdering, nextShuffle);
@@ -198,6 +199,25 @@ export function useGallery(role: "host" | "score" | "view") {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Refetch items whenever mode changes (server applies the per-mode filter).
+  // Skip the initial mount — `refresh` already fetched with the resolved mode.
+  const initialModeFetchRef = useRef(true);
+  useEffect(() => {
+    if (initialModeFetchRef.current) {
+      initialModeFetchRef.current = false;
+      return;
+    }
+    let live = true;
+    getItems(mode)
+      .then((nextItems) => {
+        if (live) setItems(nextItems);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [mode]);
 
   useEffect(() => {
     return onOrderingChanged((state) => {

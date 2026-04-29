@@ -1,15 +1,31 @@
 import fs from "node:fs/promises";
 import { google } from "googleapis";
+import type { sheets_v4 } from "googleapis";
 import { prisma } from "../prisma.js";
 import { env } from "../env.js";
+import { resolveSheetSyncTarget, setSheetSyncWorksheetTitle } from "./sheet-config-service.js";
+
+const CODE_HEADER = "作品編號";
+const LINK_HEADER = "作品連結";
 
 export async function processSheetSync(scoreIds?: string[]): Promise<void> {
   const outboxItems = await claimOutboxItems(scoreIds);
   if (!outboxItems.length) return;
-  if (!env.GOOGLE_SHEETS_ENABLED || !env.GOOGLE_SHEET_ID) {
+
+  if (!env.GOOGLE_SHEETS_ENABLED) {
     await releaseOutboxItems(
       outboxItems.map((item) => item.id),
-      "Google Sheets sync is disabled or GOOGLE_SHEET_ID is not configured.",
+      "Google Sheets sync is disabled.",
+      outboxItems.map((item) => item.scoreId)
+    );
+    return;
+  }
+
+  const target = await resolveSheetSyncTarget();
+  if (!target?.spreadsheetId) {
+    await releaseOutboxItems(
+      outboxItems.map((item) => item.id),
+      "Google Sheets sync target is not configured.",
       outboxItems.map((item) => item.scoreId)
     );
     return;
@@ -17,42 +33,201 @@ export async function processSheetSync(scoreIds?: string[]): Promise<void> {
 
   try {
     const sheets = await sheetsClient();
-    const response = await sheets.spreadsheets.values.get({ spreadsheetId: env.GOOGLE_SHEET_ID, range: "A:ZZ" });
-    const values = response.data.values ?? [];
-    const headers = values[0] ?? [];
-    const codeCol = ensureHeader(headers, "作品編號");
-    const requests = [];
+    const canonicalHeader = await buildCanonicalHeader(outboxItems);
+    const workspace = await ensureWritableWorksheet(sheets, target, canonicalHeader);
+    const values = workspace.values;
+
+    const codeCol = canonicalHeader.indexOf(CODE_HEADER);
+    const linkCol = canonicalHeader.indexOf(LINK_HEADER);
+    const rowIndexByCode = new Map<string, number>();
+    for (let idx = 1; idx < values.length; idx++) {
+      const row = values[idx] ?? [];
+      const code = String(row[codeCol] ?? "").trim();
+      if (code) rowIndexByCode.set(code, idx);
+    }
 
     for (const item of outboxItems) {
       const score = item.score;
-      const fieldCol = ensureHeader(headers, score.field);
-      let rowIdx = values.findIndex((row, idx) => idx > 0 && row[codeCol] === score.work.code);
-      if (rowIdx < 0) {
+      const fieldCol = canonicalHeader.indexOf(score.field);
+      if (fieldCol < 0) continue;
+
+      let rowIdx = rowIndexByCode.get(score.work.code);
+      if (rowIdx === undefined) {
         rowIdx = values.length;
-        values.push([]);
-        requests.push({ range: cell(rowIdx, codeCol), values: [[score.work.code]] });
+        const row = Array(canonicalHeader.length).fill("");
+        row[codeCol] = score.work.code;
+        row[linkCol] = score.work.sourceUrl ?? "";
+        values.push(row);
+        rowIndexByCode.set(score.work.code, rowIdx);
       }
-      requests.push({ range: cell(rowIdx, fieldCol), values: [[score.value]] });
+
+      const row = ensureRow(values, rowIdx, canonicalHeader.length);
+      row[codeCol] = score.work.code;
+      row[linkCol] = score.work.sourceUrl ?? "";
+      row[fieldCol] = String(score.value);
     }
 
     await sheets.spreadsheets.values.update({
-      spreadsheetId: env.GOOGLE_SHEET_ID,
-      range: `A1:${columnName(headers.length - 1)}1`,
+      spreadsheetId: target.spreadsheetId,
+      range: `${quoteSheetTitle(workspace.worksheetTitle)}!A1:${columnName(canonicalHeader.length - 1)}${Math.max(values.length, 1)}`,
       valueInputOption: "RAW",
-      requestBody: { values: [headers] }
+      requestBody: { values }
     });
-    for (const req of requests) {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: env.GOOGLE_SHEET_ID,
-        range: req.range,
-        valueInputOption: "RAW",
-        requestBody: { values: req.values }
-      });
-    }
+
     await markOutboxSynced(outboxItems.map((item) => item.id), outboxItems.map((item) => item.scoreId));
   } catch (err) {
     await releaseOutboxItems(outboxItems.map((item) => item.id), String(err), outboxItems.map((item) => item.scoreId));
   }
+}
+
+async function buildCanonicalHeader(
+  outboxItems: Array<{ score: { field: string } }>
+): Promise<string[]> {
+  const dbFields = await prisma.score.findMany({
+    select: { field: true },
+    distinct: ["field"]
+  });
+  const fields = new Set<string>(dbFields.map((entry) => entry.field));
+  for (const item of outboxItems) fields.add(item.score.field);
+  const sortedFields = [...fields].sort(compareScoreField);
+  return [CODE_HEADER, LINK_HEADER, ...sortedFields];
+}
+
+function compareScoreField(a: string, b: string): number {
+  const rank = (field: string): [number, number, string] => {
+    if (field === "初評") return [0, 0, field];
+
+    const secondary = field.match(/^複評(\d+)$/);
+    if (secondary) return [1, Number(secondary[1]), field];
+
+    const final = field.match(/^決評(美感|故事|創意)(\d+)$/);
+    if (final) {
+      const criterionOrder = final[1] === "美感" ? 0 : final[1] === "故事" ? 1 : 2;
+      return [2 + criterionOrder, Number(final[2]), field];
+    }
+
+    return [9, Number.MAX_SAFE_INTEGER, field];
+  };
+
+  const ar = rank(a);
+  const br = rank(b);
+  if (ar[0] !== br[0]) return ar[0] - br[0];
+  if (ar[1] !== br[1]) return ar[1] - br[1];
+  return ar[2].localeCompare(br[2], "zh-Hant");
+}
+
+async function ensureWritableWorksheet(
+  sheets: sheets_v4.Sheets,
+  target: { source: "db" | "env"; spreadsheetId: string; worksheetTitle: string },
+  canonicalHeader: string[]
+): Promise<{ worksheetTitle: string; values: string[][] }> {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: target.spreadsheetId });
+  const sheetsList = meta.data.sheets ?? [];
+  const found = sheetsList.find((entry) => entry.properties?.title === target.worksheetTitle);
+
+  if (!found) {
+    await addWorksheet(sheets, target.spreadsheetId, target.worksheetTitle);
+    await writeHeaderRow(sheets, target.spreadsheetId, target.worksheetTitle, canonicalHeader);
+    return { worksheetTitle: target.worksheetTitle, values: [canonicalHeader.slice()] };
+  }
+
+  const currentValues = await readWorksheetValues(sheets, target.spreadsheetId, target.worksheetTitle);
+  const isBlank = currentValues.length === 0 || currentValues.every((row) => row.every((cell) => String(cell).trim() === ""));
+  if (isBlank) {
+    await writeHeaderRow(sheets, target.spreadsheetId, target.worksheetTitle, canonicalHeader);
+    return { worksheetTitle: target.worksheetTitle, values: [canonicalHeader.slice()] };
+  }
+
+  const existingHeader = normalizeHeader(currentValues[0] ?? []);
+  if (headersMatch(existingHeader, canonicalHeader)) {
+    const normalized = [canonicalHeader.slice(), ...currentValues.slice(1).map((row) => trimRow(row, canonicalHeader.length))];
+    return { worksheetTitle: target.worksheetTitle, values: normalized };
+  }
+
+  const nextWorksheetTitle = uniqueWorksheetTitle(target.worksheetTitle, sheetsList.map((entry) => entry.properties?.title ?? ""));
+  await addWorksheet(sheets, target.spreadsheetId, nextWorksheetTitle);
+  await writeHeaderRow(sheets, target.spreadsheetId, nextWorksheetTitle, canonicalHeader);
+  if (target.source === "db") {
+    await setSheetSyncWorksheetTitle(nextWorksheetTitle);
+  }
+  return { worksheetTitle: nextWorksheetTitle, values: [canonicalHeader.slice()] };
+}
+
+async function addWorksheet(sheets: sheets_v4.Sheets, spreadsheetId: string, worksheetTitle: string): Promise<void> {
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [{ addSheet: { properties: { title: worksheetTitle } } }]
+    }
+  });
+}
+
+async function writeHeaderRow(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  worksheetTitle: string,
+  headers: string[]
+): Promise<void> {
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${quoteSheetTitle(worksheetTitle)}!A1:${columnName(headers.length - 1)}1`,
+    valueInputOption: "RAW",
+    requestBody: { values: [headers] }
+  });
+}
+
+async function readWorksheetValues(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  worksheetTitle: string
+): Promise<string[][]> {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `${quoteSheetTitle(worksheetTitle)}!A:ZZ`
+  });
+  return (response.data.values ?? []).map((row) => row.map((cell) => String(cell ?? "")));
+}
+
+function normalizeHeader(values: string[]): string[] {
+  return values.map((value) => String(value ?? "").trim());
+}
+
+function headersMatch(actual: string[], expected: string[]): boolean {
+  if (actual.length !== expected.length) return false;
+  for (let index = 0; index < expected.length; index += 1) {
+    if ((actual[index] ?? "") !== expected[index]) return false;
+  }
+  return true;
+}
+
+function trimRow(row: string[], width: number): string[] {
+  const normalized = row.slice(0, width).map((value) => String(value ?? ""));
+  if (normalized.length < width) normalized.push(...Array(width - normalized.length).fill(""));
+  return normalized;
+}
+
+function ensureRow(values: string[][], index: number, width: number): string[] {
+  const existing = values[index] ?? [];
+  const row = trimRow(existing, width);
+  values[index] = row;
+  return row;
+}
+
+function uniqueWorksheetTitle(baseTitle: string, takenTitles: string[]): string {
+  const now = new Date();
+  const stamp = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(now.getUTCDate()).padStart(2, "0")}-${String(now.getUTCHours()).padStart(2, "0")}${String(now.getUTCMinutes()).padStart(2, "0")}${String(now.getUTCSeconds()).padStart(2, "0")}`;
+  const base = `${baseTitle}-${stamp}`.slice(0, 90);
+  const taken = new Set(takenTitles);
+  if (!taken.has(base)) return base;
+  for (let index = 1; index < 1000; index += 1) {
+    const next = `${base}-${index}`.slice(0, 100);
+    if (!taken.has(next)) return next;
+  }
+  return `${base}-${Date.now()}`.slice(0, 100);
+}
+
+function quoteSheetTitle(title: string): string {
+  return `'${title.replace(/'/g, "''")}'`;
 }
 
 async function claimOutboxItems(scoreIds?: string[]) {
@@ -99,13 +274,13 @@ async function releaseOutboxItems(outboxIds: string[], error: string, scoreIds: 
   await prisma.$transaction(async (tx) => {
     for (const item of items) {
       await tx.sheetSyncOutbox.update({
-      where: { id: item.id },
-      data: {
-        status: "PENDING",
-        attempts: { increment: 1 },
-        nextAttemptAt: new Date(now.getTime() + retryDelayMs(item.attempts + 1)),
-        error
-      }
+        where: { id: item.id },
+        data: {
+          status: "PENDING",
+          attempts: { increment: 1 },
+          nextAttemptAt: new Date(now.getTime() + retryDelayMs(item.attempts + 1)),
+          error
+        }
       });
     }
     if (scoreIds.length) {
@@ -133,19 +308,6 @@ async function sheetsClient() {
     scopes: ["https://www.googleapis.com/auth/spreadsheets"]
   });
   return google.sheets({ version: "v4", auth });
-}
-
-function ensureHeader(headers: string[], name: string): number {
-  let idx = headers.indexOf(name);
-  if (idx < 0) {
-    headers.push(name);
-    idx = headers.length - 1;
-  }
-  return idx;
-}
-
-function cell(rowZero: number, colZero: number): string {
-  return `${columnName(colZero)}${rowZero + 1}`;
 }
 
 function columnName(index: number): string {

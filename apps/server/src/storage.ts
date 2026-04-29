@@ -10,6 +10,7 @@ export const dataDirs = {
   thumbnails: path.join(env.DATA_DIR, "thumbnails"),
   metadata: path.join(env.DATA_DIR, "metadata"),
   logs: path.join(env.DATA_DIR, "logs"),
+  output: path.join(env.DATA_DIR, "output"),
   exports: path.join(env.DATA_DIR, "exports"),
   secrets: path.join(env.DATA_DIR, "secrets")
 } as const;

@@ -22,6 +22,7 @@ import {
 } from "./services/import-service.js";
 import { importTemplateCsvBuffer, importTemplateXlsxBuffer } from "./services/import-template-service.js";
 import { addJudge, deleteJudge, listJudges, replaceJudges } from "./services/judge-service.js";
+import { clearMediaData, clearScoreData, exportScoresCsv, type ScoresExportArtifact } from "./services/maintenance-service.js";
 import { regenerateSidecarMetadata } from "./services/media-service.js";
 import { previewMode } from "./services/mode-preview-service.js";
 import { getOrderingState, regenerateShuffle, setActiveMode, setDefaultMode } from "./services/ordering-service.js";
@@ -178,6 +179,34 @@ app.get("/api/admin/import/template.csv", requireAuth(), (_req, res) => {
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", "attachment; filename=\"photo-grade-template.csv\"");
   res.send(importTemplateCsvBuffer());
+});
+
+app.post("/api/admin/maintenance/export-scores", requireAuth(), async (_req, res, next) => {
+  try {
+    sendCsvDownload(res, await exportScoresCsv("manual"));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/maintenance/clear-scores", requireAuth(), async (_req, res, next) => {
+  try {
+    const artifact = await exportScoresCsv("clear-scores");
+    await clearScoreData();
+    sendCsvDownload(res, artifact, { "X-Photo-Grade-Maintenance": "clear-scores" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/maintenance/clear-media", requireAuth(), async (_req, res, next) => {
+  try {
+    const artifact = await exportScoresCsv("clear-media");
+    await clearMediaData();
+    sendCsvDownload(res, artifact, { "X-Photo-Grade-Maintenance": "clear-media" });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get("/api/admin/import/template.xlsx", requireAuth(), (_req, res) => {
@@ -549,6 +578,20 @@ function toDryRunResponse(
     errors,
     items: dryRun.works.map((work) => ({ base: work.code, name: work.title, status: "ready" }))
   };
+}
+
+function sendCsvDownload(
+  res: express.Response,
+  artifact: ScoresExportArtifact,
+  headers?: Record<string, string>
+): void {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename=\"${artifact.filename}\"`);
+  res.setHeader("X-Photo-Grade-Backup-Path", artifact.absolutePath);
+  if (headers) {
+    for (const [key, value] of Object.entries(headers)) res.setHeader(key, value);
+  }
+  res.status(200).send(artifact.csv);
 }
 
 function firstString(value: unknown): string | undefined {

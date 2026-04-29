@@ -93,11 +93,21 @@ export async function setDefaultMode(
 
 export async function setActiveMode(modeInput: string): Promise<OrderingStatePayload> {
   const mode = validateOrderingMode(modeInput);
-  await ensureOrderingRow();
-  await prisma.orderingState.update({
-    where: { id: 1 },
-    data: { activeMode: mode }
-  });
+  const row = await ensureOrderingRow();
+  if (mode === "shuffle") {
+    const order = Array.isArray(row.shuffleOrder)
+      ? row.shuffleOrder.filter((value): value is string => typeof value === "string")
+      : [];
+    if (order.length === 0) {
+      const generated = await freshShuffleOrderFromWorks();
+      await prisma.orderingState.update({
+        where: { id: 1 },
+        data: { activeMode: mode, shuffleOrder: generated, generatedAt: new Date() }
+      });
+      return getOrderingState();
+    }
+  }
+  await prisma.orderingState.update({ where: { id: 1 }, data: { activeMode: mode } });
   return getOrderingState();
 }
 

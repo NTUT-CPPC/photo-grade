@@ -139,6 +139,10 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] Synology 佈署預設改為本地 `BUILD_CONTEXT=.`，避免 remote git context 在建置器環境缺 `git` 造成 build 失敗；Dockerfile 同步補齊跨發行版 `git` 安裝。
 - [x] 新增 Synology 純 compose 部署模式：`app/worker` 改用可設定 image（`APP_IMAGE`/`WORKER_IMAGE`），不再依賴遠端 build context 與本地 Dockerfile。
 - [x] 新增 GitHub Actions `publish-image.yml`：push `main`/`v*` tag 或手動觸發時，自動 build 並發布 GHCR image（`ghcr.io/<repo_owner>/photo-grade`）。
+- [x] 新增 admin Google Sheet 同步目標設定 API：可輸入 share URL 或 raw spreadsheet ID，自動解析並持久化於 DB。
+- [x] Google Sheet sync 改為優先使用 DB 設定（無設定時 fallback `GOOGLE_SHEET_ID`），同步列含 `作品編號` + `作品連結`，並套用 worksheet/header 自動修復策略。
+- [x] Host ordering：切到 shuffle 且尚未有 `shuffleOrder` 時會自動生成一次；重複切換不重洗。
+- [x] 新增 admin 維運 API：匯出分數 CSV、清除分數、清除媒體資料；清除前強制匯出，所有匯出都備份至 `DATA_DIR/output`。
 
 ### In Progress / Next
 

@@ -18,6 +18,16 @@ const MODE_LABELS: Record<Mode, string> = {
   final: "決評"
 };
 
+export const COVER_BASE = "__cover__";
+
+export function makeCoverItem(): PhotoItem {
+  return { base: COVER_BASE };
+}
+
+export function isCover(item?: PhotoItem | null): boolean {
+  return item?.base === COVER_BASE;
+}
+
 function parseBase(base: string) {
   const match = /^(\d+)(.*)$/.exec(base);
   if (!match) return { num: NaN, suffix: base };
@@ -115,13 +125,17 @@ export function useGallery(role: "host" | "score" | "view") {
     () => orderItems(items, orderingMode, shuffleOrder),
     [items, orderingMode, shuffleOrder]
   );
+  const coverItem = useMemo(() => makeCoverItem(), []);
   const visibleItems = useMemo(() => {
     const filtered = filterByMode(sortedItems, rows, mode);
-    return filtered.length ? filtered : sortedItems;
-  }, [mode, rows, sortedItems]);
+    const realVisible = filtered.length ? filtered : sortedItems;
+    return [coverItem, ...realVisible];
+  }, [coverItem, mode, rows, sortedItems]);
 
   const current = visibleItems[Math.max(0, Math.min(idx, visibleItems.length - 1))];
-  const realIdx = current ? sortedItems.findIndex((item) => item.base === current.base) : 0;
+  const realIdx = current && !isCover(current)
+    ? sortedItems.findIndex((item) => item.base === current.base)
+    : -1;
 
   const lastModeRef = useRef<Mode>(mode);
   useEffect(() => {
@@ -157,10 +171,23 @@ export function useGallery(role: "host" | "score" | "view") {
       setShuffleOrder(nextShuffle);
       setRows(nextRows);
       setLocalMode(nextMode);
-      const remoteBase = ordered[nextIdx]?.base;
-      const filtered = filterByMode(ordered, nextRows, nextMode);
-      const local = filtered.findIndex((item) => item.base === remoteBase);
-      setLocalIdx(local >= 0 ? local : Math.min(nextIdx, Math.max(filtered.length - 1, 0)));
+      // New idx convention (with cover prepended):
+      //   nextIdx === 0 → cover; nextIdx >= 1 → ordered[nextIdx - 1] in real list.
+      const remoteBase = nextIdx >= 1 ? ordered[nextIdx - 1]?.base : undefined;
+      const filteredReal = filterByMode(ordered, nextRows, nextMode);
+      const visibleReal = filteredReal.length ? filteredReal : ordered;
+      if (nextIdx <= 0 || !remoteBase) {
+        setLocalIdx(0);
+      } else {
+        const localReal = visibleReal.findIndex((item) => item.base === remoteBase);
+        if (localReal >= 0) {
+          setLocalIdx(localReal + 1);
+        } else {
+          // Fallback: clamp into the visible list (which includes cover at index 0).
+          const visibleLength = 1 + visibleReal.length;
+          setLocalIdx(Math.min(nextIdx, Math.max(visibleLength - 1, 0)));
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load gallery");
     } finally {
@@ -190,7 +217,15 @@ export function useGallery(role: "host" | "score" | "view") {
 
       if (state.idx == null && !state.base) return;
       setLocalIdx((currentIdx) => {
-        const base = state.base ?? sortedItems[state.idx ?? 0]?.base;
+        // Cover: idx === 0 with no base → cover item (visible idx 0).
+        if ((state.idx ?? -1) === 0 && !state.base) return 0;
+        // Resolve target real-item base from explicit base, or from absolute idx
+        // under the new convention (idx 0 = cover, idx 1 = sortedItems[0]).
+        let base = state.base;
+        if (!base && state.idx != null && state.idx >= 1) {
+          base = sortedItems[state.idx - 1]?.base;
+        }
+        if (!base) return currentIdx;
         const next = visibleItems.findIndex((item) => item.base === base);
         return next >= 0 ? next : currentIdx;
       });
@@ -203,8 +238,15 @@ export function useGallery(role: "host" | "score" | "view") {
       setLocalIdx(bounded);
       if (role === "host") {
         const item = visibleItems[bounded];
-        const absoluteIdx = item ? sortedItems.findIndex((candidate) => candidate.base === item.base) : bounded;
-        emitIdx(absoluteIdx, item?.base);
+        if (!item || isCover(item)) {
+          // Cover lives at absolute idx 0 with no base — server stores opaque integer.
+          emitIdx(0, undefined);
+          await setIdx(0).catch(() => undefined);
+          return;
+        }
+        const realPos = sortedItems.findIndex((candidate) => candidate.base === item.base);
+        const absoluteIdx = realPos >= 0 ? realPos + 1 : bounded;
+        emitIdx(absoluteIdx, item.base);
         await setIdx(absoluteIdx).catch(() => undefined);
       }
     },

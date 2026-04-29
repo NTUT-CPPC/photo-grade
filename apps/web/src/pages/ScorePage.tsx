@@ -4,7 +4,7 @@ import { getJudges, submitScore } from "../api/client";
 import { emitScore } from "../api/socket";
 import { SubmittedScoresPanel } from "../components/SubmittedScoresPanel";
 import { TwoPaneShell } from "../components/TwoPaneShell";
-import { useGallery } from "../state/gallery";
+import { isCover, modeLabel, useGallery } from "../state/gallery";
 import { judgeIndexForField } from "../state/work-scores";
 import type { Mode } from "../types";
 import { fieldsForMode } from "@photo-grade/shared";
@@ -15,11 +15,14 @@ const DEFAULT_JUDGE_LABELS = ["評審一", "評審二", "評審三"];
 export function ScorePage() {
   const gallery = useGallery("score");
   const item = gallery.current;
+  const onCover = isCover(item);
   const [step, setStep] = useState(0);
   const [values, setValues] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
   const [judgeLabels, setJudgeLabels] = useState<string[]>(DEFAULT_JUDGE_LABELS);
   const fields = useMemo(() => scoreFields(gallery.mode, step, judgeLabels), [gallery.mode, step, judgeLabels]);
+  const realTotal = Math.max(gallery.items.length - 1, 0);
+  const realBases = gallery.items.filter((entry) => !isCover(entry)).map((entry) => entry.base);
 
   useEffect(() => {
     let live = true;
@@ -40,7 +43,7 @@ export function ScorePage() {
   }, [item?.base, gallery.mode]);
 
   async function handleSubmit() {
-    if (!item || fields.some((field) => !values[field.key])) return;
+    if (!item || onCover || fields.some((field) => !values[field.key])) return;
     const scores = Object.fromEntries(fields.map((field) => [field.key, values[field.key]]));
     await submitScore({ base: item.base, scores, mode: gallery.mode });
     const summary = Object.entries(scores)
@@ -109,18 +112,26 @@ export function ScorePage() {
       compactPhoto
       canPrev={gallery.idx > 0}
       canNext={gallery.idx < gallery.items.length - 1}
-      bases={gallery.items.map((item) => item.base)}
+      bases={realBases}
       onPrev={() => void gallery.navigate(gallery.idx - 1)}
       onNext={() => void gallery.navigate(gallery.idx + 1)}
       onJump={(base) => gallery.jumpTo(base)}
-      footer={scoreInput}
+      footer={onCover ? null : scoreInput}
     >
-      <SubmittedScoresPanel base={item?.base} mode={gallery.mode} />
-      <header className="photo-details compact">
-        <div className="meta-line">{gallery.idx + 1}/{gallery.items.length || 0}</div>
-        <h1>{concept?.title ?? item?.base ?? "No photo"}</h1>
-        <small>{item ? `${item.base}_mini.jpg` : "-"}</small>
-      </header>
+      {onCover ? null : <SubmittedScoresPanel base={item?.base} mode={gallery.mode} />}
+      {onCover ? (
+        <header className="photo-details compact">
+          <div className="meta-line">{modeLabel(gallery.mode)} · 開場</div>
+          <h1>等待開始評分</h1>
+          <small>主持按下 Next 後即可開始評分</small>
+        </header>
+      ) : (
+        <header className="photo-details compact">
+          <div className="meta-line">{gallery.idx}/{realTotal || 0}</div>
+          <h1>{concept?.title ?? item?.base ?? "No photo"}</h1>
+          <small>{item ? `${item.base}_mini.jpg` : "-"}</small>
+        </header>
+      )}
       {gallery.error ? <p className="system-note error">{gallery.error}</p> : null}
     </TwoPaneShell>
   );

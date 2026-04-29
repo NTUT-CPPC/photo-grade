@@ -98,6 +98,9 @@ export function AdminPage() {
     (progress?.status === "complete" ||
       progress?.status === "cancelled" ||
       (progress?.status === "error" && progress?.workerOnline !== false));
+  const sheetSyncEnabled = sheetConfig?.enabled === true;
+  const serviceAccountReady = Boolean(sheetConfig?.serviceAccountEmail);
+  const canShowSheetSyncControls = sheetSyncEnabled && serviceAccountReady;
 
   useEffect(() => {
     return onImportProgress((next) => {
@@ -685,59 +688,82 @@ export function AdminPage() {
 
         <section className="admin-block">
           <h2>Google Sheet 同步設定</h2>
-          <p className="system-note">
-            請把目標試算表分享給以下服務帳號（編輯者）：
-            <strong>{sheetConfig?.serviceAccountEmail ?? " 尚未偵測到 service account email"}</strong>
-          </p>
-          {!sheetConfig?.serviceAccountEmail ? (
-            <p className="system-note error">
-              尚未解析到服務帳號。請確認 `GOOGLE_SERVICE_ACCOUNT_JSON` 或 `GOOGLE_SERVICE_ACCOUNT_FILE` 設定正確。
-            </p>
-          ) : null}
-          <label className="field-label">
-            <span>共用連結</span>
-            <input
-              type="url"
-              value={sheetShareLinkDraft}
-              onChange={(event) => setSheetShareLinkDraft(event.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-              disabled={sheetBusy}
-            />
-          </label>
-          <div className="admin-actions">
-            <button
-              type="button"
-              onClick={() => void saveSheetConfig()}
-              disabled={sheetBusy}
-              title="儲存後會由後端解析 Spreadsheet ID，並在同步時檢查/建立工作表 Header。"
-            >
-              <Save size={16} />
-              {sheetBusy ? "儲存中…" : "儲存設定"}
-            </button>
-          </div>
-          <div className="sheet-config-status">
-            <p className="system-note">
-              解析 Spreadsheet ID：<strong>{sheetConfig?.spreadsheetId ?? "尚未解析"}</strong>
-            </p>
-            <p className="system-note">
-              工作表：<strong>{sheetConfig?.worksheetTitle ?? "未設定"}</strong>
-            </p>
-            <p className="system-note">
-              Header 檢查：
-              <strong>
-                {sheetConfig?.headerOk
-                  ? " 正常"
-                  : sheetConfig?.headerAction
-                    ? ` ${sheetConfig.headerAction}`
-                    : " 待檢查"}
-              </strong>
-            </p>
-            {sheetConfig?.headerMessage ? (
-              <p className="system-note">{sheetConfig.headerMessage}</p>
-            ) : null}
-          </div>
-          {sheetNote ? <p className="system-note">{sheetNote}</p> : null}
-          {sheetError ? <p className="system-note error">{sheetError}</p> : null}
+          {sheetConfig ? (
+            canShowSheetSyncControls ? (
+              <>
+                <p className="system-note">
+                  請把目標試算表分享給以下服務帳號（編輯者）：
+                  <strong>{sheetConfig.serviceAccountEmail}</strong>
+                </p>
+                <label className="field-label">
+                  <span>共用連結</span>
+                  <input
+                    type="url"
+                    value={sheetShareLinkDraft}
+                    onChange={(event) => setSheetShareLinkDraft(event.target.value)}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    disabled={sheetBusy}
+                  />
+                </label>
+                <div className="admin-actions">
+                  <button
+                    type="button"
+                    onClick={() => void saveSheetConfig()}
+                    disabled={sheetBusy}
+                    title="儲存後會由後端解析 Spreadsheet ID，並在同步時檢查/建立工作表 Header。"
+                  >
+                    <Save size={16} />
+                    {sheetBusy ? "儲存中…" : "儲存設定"}
+                  </button>
+                </div>
+                <div className="sheet-config-status">
+                  <p className="system-note">
+                    解析 Spreadsheet ID：<strong>{sheetConfig?.spreadsheetId ?? "尚未解析"}</strong>
+                  </p>
+                  <p className="system-note">
+                    工作表：<strong>{sheetConfig?.worksheetTitle ?? "未設定"}</strong>
+                  </p>
+                  <p className="system-note">
+                    Header 檢查：
+                    <strong>
+                      {sheetConfig?.headerOk
+                        ? " 正常"
+                        : sheetConfig?.headerAction
+                          ? ` ${sheetConfig.headerAction}`
+                          : " 待檢查"}
+                    </strong>
+                  </p>
+                  {sheetConfig?.headerMessage ? (
+                    <p className="system-note">{sheetConfig.headerMessage}</p>
+                  ) : null}
+                </div>
+                {sheetNote ? <p className="system-note">{sheetNote}</p> : null}
+                {sheetError ? <p className="system-note error">{sheetError}</p> : null}
+              </>
+            ) : (
+              <>
+                <p className="system-note error">
+                  Google Sheet 同步未啟用
+                  {!sheetSyncEnabled ? "（GOOGLE_SHEETS_ENABLED=false）" : "（尚未設定 service account 金鑰）"}。
+                </p>
+                <details className="sheet-setup-guide">
+                  <summary>展開設定教學（約 3 分鐘）</summary>
+                  <ol>
+                    <li>到 Google Cloud 建立專案，啟用 Google Sheets API。</li>
+                    <li>建立 Service Account，產生 JSON 金鑰。</li>
+                    <li>
+                      將金鑰放到 `GOOGLE_SERVICE_ACCOUNT_JSON` 或 `GOOGLE_SERVICE_ACCOUNT_FILE`
+                      （例如 `/data/secrets/google-service-account.json`）。
+                    </li>
+                    <li>設定 `GOOGLE_SHEETS_ENABLED=true` 並重啟 app/worker。</li>
+                    <li>把目標試算表分享給服務帳號 email（編輯者）。</li>
+                  </ol>
+                </details>
+              </>
+            )
+          ) : (
+            <p className="system-note">讀取 Google Sheet 設定中…</p>
+          )}
         </section>
 
         <section className="admin-block">

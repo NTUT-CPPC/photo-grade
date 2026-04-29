@@ -106,6 +106,8 @@ export type Judge = {
 };
 
 export type AdminSheetConfig = {
+  enabled?: boolean;
+  source?: "db" | "env" | "none";
   shareLink: string;
   spreadsheetId?: string | null;
   worksheetTitle?: string | null;

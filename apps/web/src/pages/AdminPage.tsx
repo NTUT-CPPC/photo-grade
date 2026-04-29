@@ -1,4 +1,5 @@
-import { Check, Download, GripVertical, Plus, RotateCcw, Save, Trash2, Upload, X } from "lucide-react";
+import type { OrderingStatePayload } from "@photo-grade/shared";
+import { Check, Download, GripVertical, Plus, RotateCcw, Save, Shuffle, Trash2, Upload, X } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   cancelImport,
@@ -7,9 +8,11 @@ import {
   getActiveImport,
   getImportProgress,
   getJudges,
-  saveJudges
+  getOrdering,
+  saveJudges,
+  setDefaultOrdering
 } from "../api/client";
-import { onImportProgress } from "../api/socket";
+import { onImportProgress, onOrderingChanged } from "../api/socket";
 import type { ImportDryRunResult, ImportProgress, Judge } from "../types";
 
 type JudgeDraft = {
@@ -44,6 +47,10 @@ export function AdminPage() {
   const [cancelBusy, setCancelBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunDialogOpen, setDryRunDialogOpen] = useState(false);
+  const [ordering, setOrdering] = useState<OrderingStatePayload | null>(null);
+  const [orderingBusy, setOrderingBusy] = useState(false);
+  const [orderingNote, setOrderingNote] = useState<string | null>(null);
+  const [orderingError, setOrderingError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dryRunAbortRef = useRef<AbortController | null>(null);
@@ -89,6 +96,22 @@ export function AdminPage() {
     void hydrateActiveBatch();
     return () => {
       dryRunAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    getOrdering()
+      .then((state) => {
+        if (live) setOrdering(state);
+      })
+      .catch(() => undefined);
+    const off = onOrderingChanged((state) => {
+      if (live) setOrdering(state);
+    });
+    return () => {
+      live = false;
+      off();
     };
   }, []);
 
@@ -236,6 +259,41 @@ export function AdminPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  async function handleSelectDefaultOrdering(nextDefault: "sequential" | "shuffle") {
+    if (orderingBusy) return;
+    if (ordering?.defaultMode === nextDefault) return;
+    setOrderingBusy(true);
+    setOrderingError(null);
+    setOrderingNote(null);
+    try {
+      const next = await setDefaultOrdering({ defaultMode: nextDefault });
+      setOrdering(next);
+      setOrderingNote(
+        nextDefault === "shuffle" ? "已切換為亂序並重新打亂順序" : "已切換為順序排序"
+      );
+    } catch (err) {
+      setOrderingError(err instanceof Error ? err.message : "更新預設排序失敗");
+    } finally {
+      setOrderingBusy(false);
+    }
+  }
+
+  async function handleRegenerateShuffle() {
+    if (orderingBusy) return;
+    setOrderingBusy(true);
+    setOrderingError(null);
+    setOrderingNote(null);
+    try {
+      const next = await setDefaultOrdering({ regenerate: true });
+      setOrdering(next);
+      setOrderingNote("已重新打亂順序");
+    } catch (err) {
+      setOrderingError(err instanceof Error ? err.message : "重新打亂失敗");
+    } finally {
+      setOrderingBusy(false);
+    }
+  }
+
   function addJudgeName() {
     const name = judgeName.trim();
     if (!name) return;
@@ -337,6 +395,55 @@ export function AdminPage() {
             ))}
             {!judges.length ? <li className="empty-row">尚無評審資料</li> : null}
           </ul>
+        </section>
+
+        <section className="admin-block">
+          <h2>預設排序模式</h2>
+          <div className="ordering-control">
+            <div className="ordering-segmented" role="group" aria-label="預設排序模式">
+              <button
+                type="button"
+                className={`ordering-segmented__btn${ordering?.defaultMode === "sequential" ? " active" : ""}`}
+                onClick={() => void handleSelectDefaultOrdering("sequential")}
+                disabled={orderingBusy || !ordering}
+                aria-pressed={ordering?.defaultMode === "sequential"}
+              >
+                順序
+              </button>
+              <button
+                type="button"
+                className={`ordering-segmented__btn${ordering?.defaultMode === "shuffle" ? " active" : ""}`}
+                onClick={() => void handleSelectDefaultOrdering("shuffle")}
+                disabled={orderingBusy || !ordering}
+                aria-pressed={ordering?.defaultMode === "shuffle"}
+              >
+                亂序
+              </button>
+            </div>
+            <div className="admin-actions">
+              <button
+                type="button"
+                onClick={() => void handleRegenerateShuffle()}
+                disabled={orderingBusy || !ordering || ordering.defaultMode !== "shuffle"}
+                title="重新建立亂序順序，所有客戶端會立即套用。"
+              >
+                <Shuffle size={16} />
+                重新打亂
+              </button>
+            </div>
+            <p className="system-note ordering-help">
+              亂序時，後端會在切換或按重新打亂時建立新順序；切換到順序時不會清除既有亂序，方便切回。
+            </p>
+            {orderingNote ? (
+              <p className="system-note">
+                {orderingNote}
+                {ordering?.generatedAt
+                  ? `（${formatRelativeTime(ordering.generatedAt)}建立）`
+                  : null}
+              </p>
+            ) : null}
+            {orderingError ? <p className="system-note error">{orderingError}</p> : null}
+          </div>
         </section>
 
         <section className="admin-block">

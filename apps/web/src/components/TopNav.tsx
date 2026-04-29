@@ -1,15 +1,18 @@
+import type { OrderingMode, OrderingStatePayload } from "@photo-grade/shared";
 import { LogIn, LogOut, Menu } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getAuthStatus,
   getMode,
+  getOrdering,
   getRuntimeConfig,
   logout,
+  setActiveOrdering,
   setMode as setModeApi,
   type AuthMode,
   type AuthStatus
 } from "../api/client";
-import { emitMode, onSyncState } from "../api/socket";
+import { emitMode, onOrderingChanged, onSyncState } from "../api/socket";
 import { modeLabel } from "../state/gallery";
 import type { Mode } from "../types";
 
@@ -47,6 +50,8 @@ export function TopNav() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [viewQrCode, setViewQrCode] = useState("");
   const [hostMode, setHostMode] = useState<Mode>("initial");
+  const [ordering, setOrdering] = useState<OrderingStatePayload | null>(null);
+  const [orderingBusy, setOrderingBusy] = useState(false);
   const publicMode = isActive(path, "/view");
   const isHostPage = path.startsWith("/host");
   const isAuthenticated = authStatus?.authenticated ?? false;
@@ -131,6 +136,23 @@ export function TopNav() {
     };
   }, [isHostPage]);
 
+  useEffect(() => {
+    if (!isHostPage) return;
+    let live = true;
+    getOrdering()
+      .then((state) => {
+        if (live) setOrdering(state);
+      })
+      .catch(() => undefined);
+    const off = onOrderingChanged((state) => {
+      if (live) setOrdering(state);
+    });
+    return () => {
+      live = false;
+      off();
+    };
+  }, [isHostPage]);
+
   const handleLoginLink = (href: RouteItem["href"]) => (event: React.MouseEvent<HTMLAnchorElement>) => {
     setOpen(false);
     if (publicMode && authMode === "oidc" && !isAuthenticated) {
@@ -154,6 +176,20 @@ export function TopNav() {
     setHostMode(mode);
     emitMode(mode);
     void setModeApi(mode).catch(() => undefined);
+  };
+
+  const handleSelectOrdering = (next: OrderingMode) => {
+    if (orderingBusy) return;
+    if (!ordering) return;
+    if (next === ordering.activeMode) return;
+    if (next === "shuffle" && !ordering.hasShuffle) return;
+    setOrderingBusy(true);
+    const previous = ordering;
+    setOrdering({ ...ordering, activeMode: next });
+    setActiveOrdering(next)
+      .then((state) => setOrdering(state))
+      .catch(() => setOrdering(previous))
+      .finally(() => setOrderingBusy(false));
   };
 
   const triggerLabel = publicMode && !isAuthenticated ? "Login menu" : "Route menu";
@@ -216,6 +252,35 @@ export function TopNav() {
               <a href={viewEntryUrl} target="_blank" rel="noreferrer">
                 {viewEntryUrl}
               </a>
+            </section>
+          ) : null}
+          {isHostPage ? (
+            <section className="top-nav-mode" aria-label="順序模式">
+              <p>順序模式</p>
+              <div className="top-nav-mode-buttons">
+                <button
+                  type="button"
+                  className={`top-nav-mode-btn${ordering?.activeMode === "sequential" ? " active" : ""}`}
+                  onClick={() => handleSelectOrdering("sequential")}
+                  disabled={orderingBusy || !ordering}
+                  aria-pressed={ordering?.activeMode === "sequential"}
+                >
+                  順序
+                </button>
+                <button
+                  type="button"
+                  className={`top-nav-mode-btn${ordering?.activeMode === "shuffle" ? " active" : ""}`}
+                  onClick={() => handleSelectOrdering("shuffle")}
+                  disabled={orderingBusy || !ordering || !ordering.hasShuffle}
+                  aria-pressed={ordering?.activeMode === "shuffle"}
+                  title={ordering && !ordering.hasShuffle ? "尚未建立亂序排序" : undefined}
+                >
+                  亂序
+                </button>
+              </div>
+              {ordering && !ordering.hasShuffle ? (
+                <p className="top-nav-caption">尚未建立亂序排序，請至 Admin 啟用。</p>
+              ) : null}
             </section>
           ) : null}
           {isHostPage ? (

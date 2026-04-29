@@ -29,6 +29,74 @@ interface EnsureWorksheetResult {
   appendedColumns: string[];
 }
 
+/**
+ * Periodic reconcile sweep — repairs sync drift by:
+ *
+ * 1. Resetting stuck outbox entries:
+ *    - PROCESSING entries older than 60s (orphaned by worker crash) → PENDING.
+ *    - FAILED entries → PENDING (sweep retries them sooner; nextAttemptAt
+ *      already encodes their original retry-delay but we reset it to now).
+ * 2. Recreating missing outbox entries: for any Score whose sheetStatus
+ *    !== "SYNCED" and has no PENDING/PROCESSING outbox row, create a fresh
+ *    PENDING outbox entry. Catches cases where outbox rows were manually
+ *    deleted, or older bugs left scores orphaned.
+ * 3. Drains by calling processSheetSync() (no scoreIds → claims all PENDING
+ *    items respecting nextAttemptAt).
+ *
+ * Errors are caught and logged; never propagated. The BullMQ job runs on a
+ * schedule and should not stay in a failed state.
+ */
+export async function reconcileSheetSync(): Promise<{
+  resetStuck: number;
+  recreatedMissing: number;
+}> {
+  const startedAt = new Date();
+  console.log(`[sheet-sync:sweep] started at=${startedAt.toISOString()}`);
+
+  let resetStuck = 0;
+  let recreatedMissing = 0;
+  try {
+    const now = new Date();
+    const stuckThreshold = new Date(now.getTime() - 60_000);
+
+    const stuckProcessing = await prisma.sheetSyncOutbox.updateMany({
+      where: {
+        status: "PROCESSING",
+        updatedAt: { lt: stuckThreshold }
+      },
+      data: { status: "PENDING", nextAttemptAt: now, error: null }
+    });
+    const stuckFailed = await prisma.sheetSyncOutbox.updateMany({
+      where: { status: "FAILED" },
+      data: { status: "PENDING", nextAttemptAt: now, error: null }
+    });
+    resetStuck = stuckProcessing.count + stuckFailed.count;
+
+    const orphans = await prisma.score.findMany({
+      where: {
+        sheetStatus: { not: "SYNCED" },
+        outboxItems: { none: { status: { in: ["PENDING", "PROCESSING"] } } }
+      },
+      select: { id: true }
+    });
+    if (orphans.length > 0) {
+      await prisma.sheetSyncOutbox.createMany({
+        data: orphans.map((s) => ({ scoreId: s.id }))
+      });
+    }
+    recreatedMissing = orphans.length;
+
+    await processSheetSync();
+  } catch (err) {
+    console.error("[sheet-sync:sweep] error:", err);
+  }
+
+  console.log(
+    `[sheet-sync:sweep] finished resetStuck=${resetStuck} recreatedMissing=${recreatedMissing}`
+  );
+  return { resetStuck, recreatedMissing };
+}
+
 export async function processSheetSync(scoreIds?: string[]): Promise<void> {
   const outboxItems = await claimOutboxItems(scoreIds);
   if (!outboxItems.length) return;

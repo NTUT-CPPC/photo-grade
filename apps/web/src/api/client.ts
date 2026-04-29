@@ -6,6 +6,10 @@ import type {
   RuleConfigPayload
 } from "@photo-grade/shared";
 import type {
+  AdminClearRequest,
+  AdminClearResponse,
+  AdminSheetConfig,
+  AdminSheetConfigUpdate,
   ActiveImportBatch,
   ImportDryRunResult,
   ImportProgress,
@@ -83,6 +87,52 @@ async function firstOk<T>(paths: string[], options?: RequestOptions): Promise<T>
   for (const path of paths) {
     try {
       return await request<T>(path, options);
+    } catch (error) {
+      last = error;
+    }
+  }
+  throw last instanceof Error ? last : new Error("All API endpoints failed");
+}
+
+function parseFilenameFromContentDisposition(value: string | null): string | undefined {
+  if (!value) return undefined;
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]).replace(/^"|"$/g, "");
+    } catch {
+      return utf8Match[1].replace(/^"|"$/g, "");
+    }
+  }
+  const simpleMatch = value.match(/filename="?([^"]+)"?/i);
+  return simpleMatch?.[1];
+}
+
+async function requestBlob(
+  path: string,
+  options: RequestOptions = {}
+): Promise<{ blob: Blob; filename?: string }> {
+  const response = await fetch(url(path), {
+    credentials: "same-origin",
+    ...options
+  });
+
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
+  }
+  const blob = await response.blob();
+  const filename = parseFilenameFromContentDisposition(response.headers.get("Content-Disposition"));
+  return { blob, filename };
+}
+
+async function firstOkBlob(
+  paths: string[],
+  options?: RequestOptions
+): Promise<{ blob: Blob; filename?: string }> {
+  let last: unknown;
+  for (const path of paths) {
+    try {
+      return await requestBlob(path, options);
     } catch (error) {
       last = error;
     }
@@ -171,10 +221,10 @@ export async function getIdx(): Promise<number> {
   return Number(data.idx ?? data.index ?? 0);
 }
 
-export async function setIdx(idx: number): Promise<void> {
+export async function setIdx(idx: number, base?: string | null): Promise<void> {
   await firstOk<void>(["/api/sync/idx", "/set_idx"], {
     method: "POST",
-    body: JSON.stringify({ idx, index: idx }),
+    body: JSON.stringify({ idx, index: idx, base }),
     allowEmpty: true
   });
 }
@@ -241,6 +291,57 @@ export async function saveRuleConfig(
     method: "PUT",
     body: JSON.stringify(patch)
   });
+}
+
+export async function getAdminSheetConfig(): Promise<AdminSheetConfig> {
+  return firstOk<AdminSheetConfig>([
+    "/api/admin/sheet-config",
+    "/api/admin/sheet-sync/config",
+    "/api/admin/sheet/config"
+  ]);
+}
+
+export async function saveAdminSheetConfig(
+  payload: AdminSheetConfigUpdate
+): Promise<AdminSheetConfig> {
+  return firstOk<AdminSheetConfig>(
+    ["/api/admin/sheet-config", "/api/admin/sheet-sync/config", "/api/admin/sheet/config"],
+    {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    }
+  );
+}
+
+export async function exportScoresCsv(): Promise<{ blob: Blob; filename?: string }> {
+  return firstOkBlob(
+    ["/api/admin/export/scores.csv", "/api/admin/scores/export.csv", "/api/admin/scores/export"],
+    { method: "GET" }
+  );
+}
+
+export async function clearScoresData(
+  payload: AdminClearRequest
+): Promise<AdminClearResponse | void> {
+  return firstOk<AdminClearResponse | void>(
+    ["/api/admin/clear/scores", "/api/admin/maintenance/clear-scores"],
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      allowEmpty: true
+    }
+  );
+}
+
+export async function clearMediaData(payload: AdminClearRequest): Promise<AdminClearResponse | void> {
+  return firstOk<AdminClearResponse | void>(
+    ["/api/admin/clear/media", "/api/admin/maintenance/clear-media"],
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+      allowEmpty: true
+    }
+  );
 }
 
 export async function setActiveOrdering(activeMode: OrderingMode): Promise<OrderingStatePayload> {

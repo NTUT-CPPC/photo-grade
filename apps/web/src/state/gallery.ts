@@ -9,7 +9,7 @@ import {
   setIdx,
   setMode
 } from "../api/client";
-import { emitIdx, emitMode, onOrderingChanged, onSyncState } from "../api/socket";
+import { onOrderingChanged, onSyncState } from "../api/socket";
 import type { Mode, PhotoItem, SheetRecord } from "../types";
 
 const MODE_LABELS: Record<Mode, string> = {
@@ -259,15 +259,13 @@ export function useGallery(role: "host" | "score" | "view") {
       if (role === "host") {
         const item = visibleItems[bounded];
         if (!item || isCover(item)) {
-          // Cover lives at absolute idx 0 with no base — server stores opaque integer.
-          emitIdx(0, undefined);
-          await setIdx(0).catch(() => undefined);
+          // Cover lives at absolute idx 0; clear base so remote state is not stale.
+          await setIdx(0, null).catch(() => undefined);
           return;
         }
         const realPos = sortedItems.findIndex((candidate) => candidate.base === item.base);
         const absoluteIdx = realPos >= 0 ? realPos + 1 : bounded;
-        emitIdx(absoluteIdx, item.base);
-        await setIdx(absoluteIdx).catch(() => undefined);
+        await setIdx(absoluteIdx, item.base).catch(() => undefined);
       }
     },
     [role, sortedItems, visibleItems]
@@ -286,7 +284,6 @@ export function useGallery(role: "host" | "score" | "view") {
       setLocalMode(nextMode);
       setLocalIdx(0);
       if (role === "host") {
-        emitMode(nextMode);
         await setMode(nextMode).catch(() => undefined);
       }
     },

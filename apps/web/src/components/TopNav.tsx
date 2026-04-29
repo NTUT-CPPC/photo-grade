@@ -14,6 +14,7 @@ import {
   getRuntimeConfig,
   logout,
   setActiveOrdering,
+  setDefaultOrdering,
   setFinalCutoff,
   setMode as setModeApi,
   setSecondaryThreshold,
@@ -304,11 +305,16 @@ export function TopNav() {
     if (orderingBusy) return;
     if (!ordering) return;
     if (next === ordering.activeMode) return;
-    if (next === "shuffle" && !ordering.hasShuffle) return;
     setOrderingBusy(true);
     const previous = ordering;
     setOrdering({ ...ordering, activeMode: next });
-    setActiveOrdering(next)
+    const request = next === "shuffle" && !ordering.hasShuffle
+      ? setActiveOrdering(next).then((state) => {
+          if (state.hasShuffle) return state;
+          return setDefaultOrdering({ defaultMode: "shuffle" });
+        })
+      : setActiveOrdering(next);
+    request
       .then((state) => setOrdering(state))
       .catch(() => setOrdering(previous))
       .finally(() => setOrderingBusy(false));
@@ -393,15 +399,15 @@ export function TopNav() {
                   type="button"
                   className={`top-nav-mode-btn${ordering?.activeMode === "shuffle" ? " active" : ""}`}
                   onClick={() => handleSelectOrdering("shuffle")}
-                  disabled={orderingBusy || !ordering || !ordering.hasShuffle}
+                  disabled={orderingBusy || !ordering}
                   aria-pressed={ordering?.activeMode === "shuffle"}
-                  title={ordering && !ordering.hasShuffle ? "尚未建立亂序排序" : undefined}
+                  title={ordering && !ordering.hasShuffle ? "首次切換會自動建立亂序排序" : undefined}
                 >
                   亂序
                 </button>
               </div>
               {ordering && !ordering.hasShuffle ? (
-                <p className="top-nav-caption">尚未建立亂序排序，請至 Admin 啟用。</p>
+                <p className="top-nav-caption">尚未建立亂序排序，切換到亂序時會自動建立。</p>
               ) : null}
             </section>
           ) : null}

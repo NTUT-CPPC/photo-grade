@@ -6,10 +6,8 @@
 #   3. 開啟 http://localhost:8080/view
 #
 # 所有未在 .env 設定的變數都會 fallback 到 ${VAR:-default} 的預設值。
-# BUILD_CONTEXT 預設為本地目錄（Synology Container Manager 建議做法）：
-#   BUILD_CONTEXT=.
-# 若改用 Git URL 當 context，拉取階段依賴建置器環境的 git，常見於 NAS 報
-# `unable to find 'git'`；建議先 clone 到 NAS 本地再用本地 context build。
+# Synology 純 compose 部署建議直接使用已發佈 image，不走本地 build。
+# 若要更新版本，調整 APP_IMAGE / WORKER_IMAGE tag 後重新部署即可。
 # AUTH_MODE=oidc 時，相關 OIDC_* / SESSION_SECRET 必填，否則 server 啟動會直接 fail。
 
 x-app-env: &app-env
@@ -66,8 +64,7 @@ x-app-env: &app-env
 
 services:
   app:
-    build:
-      context: ${BUILD_CONTEXT:-.}
+    image: ${APP_IMAGE:-ghcr.io/ntut-cppc/photo-grade:latest}
     # 啟動時 push Prisma schema，再起 server。
     command: sh -c "npm run db:push && npm run start"
     environment:
@@ -84,8 +81,7 @@ services:
     restart: unless-stopped
 
   worker:
-    build:
-      context: ${BUILD_CONTEXT:-.}
+    image: ${WORKER_IMAGE:-ghcr.io/ntut-cppc/photo-grade:latest}
     command: npm run worker
     environment:
       <<: *app-env

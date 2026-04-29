@@ -131,6 +131,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] Admin progress panel 顯示批次檔名 + 相對時間；完成或非 worker-offline 錯誤時顯示「Start new import」重設。
 - [x] Compose 對外 port 改為僅使用 `PORT` 變數（移除 `APP_PORT`），避免 host/container port 設定分離造成誤配。
 - [x] Synology 佈署預設改為本地 `BUILD_CONTEXT=.`，避免 remote git context 在建置器環境缺 `git` 造成 build 失敗；Dockerfile 同步補齊跨發行版 `git` 安裝。
+- [x] 新增 Synology 純 compose 部署模式：`app/worker` 改用可設定 image（`APP_IMAGE`/`WORKER_IMAGE`），不再依賴遠端 build context 與本地 Dockerfile。
 
 ### In Progress / Next
 

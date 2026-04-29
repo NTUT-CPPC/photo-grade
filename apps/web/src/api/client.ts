@@ -1,4 +1,9 @@
-import type { OrderingMode, OrderingStatePayload } from "@photo-grade/shared";
+import type {
+  ModePreviewResult,
+  OrderingMode,
+  OrderingStatePayload,
+  PresentationStatePayload
+} from "@photo-grade/shared";
 import type {
   ActiveImportBatch,
   ImportDryRunResult,
@@ -176,6 +181,29 @@ export async function setMode(mode: Mode): Promise<void> {
   await firstOk<void>(["/api/sync/mode", "/set_mode"], {
     method: "POST",
     body: JSON.stringify({ mode }),
+    allowEmpty: true
+  });
+}
+
+export async function getPresentationState(): Promise<PresentationStatePayload> {
+  return request<PresentationStatePayload>("/api/host/state");
+}
+
+export async function getModePreview(
+  mode: Mode,
+  options: { topN?: number } = {}
+): Promise<ModePreviewResult> {
+  const params = new URLSearchParams({ mode });
+  if (options.topN !== undefined && Number.isFinite(options.topN)) {
+    params.set("topN", String(Math.trunc(options.topN)));
+  }
+  return request<ModePreviewResult>(`/api/host/preview-mode?${params.toString()}`);
+}
+
+export async function setFinalCutoff(topN: number): Promise<void> {
+  await firstOk<void>(["/api/host/state"], {
+    method: "POST",
+    body: JSON.stringify({ finalCutoff: topN }),
     allowEmpty: true
   });
 }

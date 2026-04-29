@@ -2,7 +2,8 @@ import type {
   ModePreviewResult,
   OrderingMode,
   OrderingStatePayload,
-  PresentationStatePayload
+  PresentationStatePayload,
+  RuleConfigPayload
 } from "@photo-grade/shared";
 import type {
   ActiveImportBatch,
@@ -103,8 +104,14 @@ function normalizeItems(payload: unknown): PhotoItem[] {
   });
 }
 
-export async function getItems(): Promise<PhotoItem[]> {
-  const payload = await firstOk<unknown>(["/api/items", "/api/photos", "/items", "/photos"]);
+export async function getItems(mode?: Mode): Promise<PhotoItem[]> {
+  const suffix = mode ? `?mode=${encodeURIComponent(mode)}` : "";
+  const payload = await firstOk<unknown>([
+    `/api/items${suffix}`,
+    `/api/photos${suffix}`,
+    `/items${suffix}`,
+    `/photos${suffix}`
+  ]);
   return normalizeItems(payload);
 }
 
@@ -221,6 +228,19 @@ export async function setSecondaryThreshold(threshold: number | null): Promise<v
 
 export async function getOrdering(): Promise<OrderingStatePayload> {
   return request<OrderingStatePayload>("/api/ordering");
+}
+
+export async function getRuleConfig(): Promise<RuleConfigPayload> {
+  return request<RuleConfigPayload>("/api/admin/rule-config");
+}
+
+export async function saveRuleConfig(
+  patch: { defaultFinalTopN?: number; defaultSecondaryThreshold?: number | null }
+): Promise<RuleConfigPayload> {
+  return request<RuleConfigPayload>("/api/admin/rule-config", {
+    method: "PUT",
+    body: JSON.stringify(patch)
+  });
 }
 
 export async function setActiveOrdering(activeMode: OrderingMode): Promise<OrderingStatePayload> {

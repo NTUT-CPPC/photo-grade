@@ -1,4 +1,4 @@
-import type { OrderingStatePayload } from "@photo-grade/shared";
+import type { OrderingStatePayload, RuleConfigPayload } from "@photo-grade/shared";
 import { Check, Download, GripVertical, Plus, RotateCcw, Save, Shuffle, Trash2, Upload, X } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -9,7 +9,9 @@ import {
   getImportProgress,
   getJudges,
   getOrdering,
+  getRuleConfig,
   saveJudges,
+  saveRuleConfig,
   setDefaultOrdering
 } from "../api/client";
 import { onImportProgress, onOrderingChanged } from "../api/socket";
@@ -51,6 +53,13 @@ export function AdminPage() {
   const [orderingBusy, setOrderingBusy] = useState(false);
   const [orderingNote, setOrderingNote] = useState<string | null>(null);
   const [orderingError, setOrderingError] = useState<string | null>(null);
+  const [ruleConfig, setRuleConfigState] = useState<RuleConfigPayload | null>(null);
+  const [ruleTopNDraft, setRuleTopNDraft] = useState<string>("");
+  const [ruleThresholdAuto, setRuleThresholdAuto] = useState<boolean>(true);
+  const [ruleThresholdDraft, setRuleThresholdDraft] = useState<string>("");
+  const [ruleBusy, setRuleBusy] = useState(false);
+  const [ruleNote, setRuleNote] = useState<string | null>(null);
+  const [ruleError, setRuleError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dryRunAbortRef = useRef<AbortController | null>(null);
@@ -112,6 +121,24 @@ export function AdminPage() {
     return () => {
       live = false;
       off();
+    };
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    getRuleConfig()
+      .then((config) => {
+        if (!live) return;
+        setRuleConfigState(config);
+        setRuleTopNDraft(String(config.defaultFinalTopN));
+        setRuleThresholdAuto(config.defaultSecondaryThreshold === null);
+        setRuleThresholdDraft(
+          config.defaultSecondaryThreshold === null ? "" : String(config.defaultSecondaryThreshold)
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
     };
   }, []);
 
@@ -294,6 +321,43 @@ export function AdminPage() {
     }
   }
 
+  async function saveRuleDefaults() {
+    setRuleBusy(true);
+    setRuleError(null);
+    setRuleNote(null);
+    try {
+      const topN = Number(ruleTopNDraft);
+      if (!Number.isInteger(topN) || topN < 1) {
+        throw new Error("決評入圍人數需為正整數。");
+      }
+      let threshold: number | null;
+      if (ruleThresholdAuto) {
+        threshold = null;
+      } else {
+        const parsed = Number(ruleThresholdDraft);
+        if (!Number.isInteger(parsed) || parsed < 1) {
+          throw new Error("初評通過票數需為正整數。");
+        }
+        threshold = parsed;
+      }
+      const next = await saveRuleConfig({
+        defaultFinalTopN: topN,
+        defaultSecondaryThreshold: threshold
+      });
+      setRuleConfigState(next);
+      setRuleTopNDraft(String(next.defaultFinalTopN));
+      setRuleThresholdAuto(next.defaultSecondaryThreshold === null);
+      setRuleThresholdDraft(
+        next.defaultSecondaryThreshold === null ? "" : String(next.defaultSecondaryThreshold)
+      );
+      setRuleNote("已儲存預設規則並套用到目前狀態");
+    } catch (err) {
+      setRuleError(err instanceof Error ? err.message : "儲存預設規則失敗");
+    } finally {
+      setRuleBusy(false);
+    }
+  }
+
   function addJudgeName() {
     const name = judgeName.trim();
     if (!name) return;
@@ -444,6 +508,68 @@ export function AdminPage() {
             ) : null}
             {orderingError ? <p className="system-note error">{orderingError}</p> : null}
           </div>
+        </section>
+
+        <section className="admin-block">
+          <h2>評選規則預設值</h2>
+          <div className="rule-config-grid">
+            <label className="rule-config-row">
+              <span>初評通過票數</span>
+              <span className="rule-config-input">
+                <input
+                  type="checkbox"
+                  checked={ruleThresholdAuto}
+                  onChange={(event) => setRuleThresholdAuto(event.target.checked)}
+                  disabled={ruleBusy}
+                  aria-label="依評審人數自動過半數"
+                />
+                <span className="rule-config-input__hint">依評審人數自動過半數</span>
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={ruleThresholdDraft}
+                  onChange={(event) => setRuleThresholdDraft(event.target.value)}
+                  disabled={ruleBusy || ruleThresholdAuto}
+                  placeholder={ruleThresholdAuto ? "自動" : "票"}
+                  aria-label="初評通過票數"
+                />
+              </span>
+            </label>
+            <label className="rule-config-row">
+              <span>決評入圍人數</span>
+              <span className="rule-config-input">
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={ruleTopNDraft}
+                  onChange={(event) => setRuleTopNDraft(event.target.value)}
+                  disabled={ruleBusy}
+                  aria-label="決評入圍人數"
+                />
+                <span className="rule-config-input__hint">名</span>
+              </span>
+            </label>
+          </div>
+          <div className="admin-actions">
+            <button
+              type="button"
+              onClick={() => void saveRuleDefaults()}
+              disabled={ruleBusy || !ruleConfig}
+              title="儲存後會套用到目前狀態，並觸發初評通過名單重算。"
+            >
+              <Save size={16} />
+              儲存預設值
+            </button>
+          </div>
+          <p className="system-note ordering-help">
+            初評通過票數預設為「依評審人數自動過半數」（例如 3 位評審則 2 票通過）。
+            勾掉自動可固定為任一票數。決評入圍人數預設 60，平手仍超額錄取。
+            儲存後會清除目前 host 的臨時調整並重新套用。
+          </p>
+          {ruleNote ? <p className="system-note">{ruleNote}</p> : null}
+          {ruleError ? <p className="system-note error">{ruleError}</p> : null}
         </section>
 
         <section className="admin-block">

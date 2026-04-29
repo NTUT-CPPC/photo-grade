@@ -31,6 +31,7 @@ const EnvSchema = z
     GOOGLE_SERVICE_ACCOUNT_FILE: z.string().optional(),
     MAX_IMPORT_FILE_MB: z.coerce.number().default(50),
     MAX_MEDIA_FILE_MB: z.coerce.number().default(200),
+    IMPORT_ITEM_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
     SOCKET_CORS_ORIGIN: z.string().default("")
   })
   .superRefine((value, ctx) => {

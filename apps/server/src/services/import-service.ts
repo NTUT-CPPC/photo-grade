@@ -6,6 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { normalizeRows, validateHeaders, type ImportDryRun } from "@photo-grade/shared";
 import { prisma } from "../prisma.js";
 import { queue } from "../queue.js";
+import { env } from "../env.js";
 import { assertInsideDataDir, dataDirs, safeFileName, wipeDirContents } from "../storage.js";
 
 export async function dryRunImport(filePath: string): Promise<ImportDryRun> {
@@ -65,18 +66,28 @@ export async function processImportBatch(
 
   const { processMediaForWork } = await import("./media-service.js");
   let processed = 0;
-  for (const work of dryRun.works) {
+  let nextIndex = 0;
+  let stopScheduling = false;
+  const laneCount = Math.min(env.IMPORT_ITEM_CONCURRENCY, total || 1);
+  console.log(`[import] batchId=${batchId} laneCount=${laneCount}`);
+
+  const runWork = async (workIndex: number): Promise<void> => {
+    const work = dryRun.works[workIndex];
+    if (!work) return;
+
     const current = await prisma.importBatch.findUniqueOrThrow({
       where: { id: batchId },
       select: { status: true }
     });
     if (current.status === "CANCELLED") {
-      console.log(`[import] batchId=${batchId} cancelled at ${processed}/${total}, exiting`);
+      stopScheduling = true;
       return;
     }
 
-    console.log(`[import] (${processed + 1}/${total}) work.code=${work.code} title=${work.title}`);
+    const humanIndex = workIndex + 1;
+    console.log(`[import] (${humanIndex}/${total}) work.code=${work.code} title=${work.title}`);
     await onProgress?.(`Processing ${work.code}`, processed);
+
     try {
       const record = await prisma.work.upsert({
         where: { code: work.code },
@@ -108,9 +119,30 @@ export async function processImportBatch(
       await onProgress?.(`Processed ${processed}/${total}`, processed);
       console.log(`[import] (${processed}/${total}) ok work.code=${work.code}`);
     } catch (err) {
-      console.error(`[import] (${processed + 1}/${total}) failed work.code=${work.code}:`, err);
+      stopScheduling = true;
+      console.error(`[import] (${humanIndex}/${total}) failed work.code=${work.code}:`, err);
       throw err;
     }
+  };
+
+  const runLane = async (): Promise<void> => {
+    while (!stopScheduling) {
+      const workIndex = nextIndex;
+      if (workIndex >= total) return;
+      nextIndex += 1;
+      await runWork(workIndex);
+    }
+  };
+
+  await Promise.all(Array.from({ length: laneCount }, () => runLane()));
+
+  const finalState = await prisma.importBatch.findUniqueOrThrow({
+    where: { id: batchId },
+    select: { status: true }
+  });
+  if (finalState.status === "CANCELLED") {
+    console.log(`[import] batchId=${batchId} cancelled at ${processed}/${total}, exiting`);
+    return;
   }
 
   await prisma.importBatch.update({ where: { id: batchId }, data: { status: "COMPLETED", processedCount: processed } });

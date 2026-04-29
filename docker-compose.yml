@@ -60,6 +60,7 @@ x-app-env: &app-env
   # --- Limits / CORS ---
   MAX_IMPORT_FILE_MB: ${MAX_IMPORT_FILE_MB:-50}
   MAX_MEDIA_FILE_MB: ${MAX_MEDIA_FILE_MB:-200}
+  IMPORT_ITEM_CONCURRENCY: ${IMPORT_ITEM_CONCURRENCY:-1}
   # 留空代表 same-origin；跨網域時請填前端 origin（含 scheme），例如 https://judge.example.com。
   SOCKET_CORS_ORIGIN: ${SOCKET_CORS_ORIGIN:-}
 

@@ -109,6 +109,7 @@ docker compose down -v
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | `/data/secrets/google-service-account.json` | 二擇一 | 指向掛載到容器內的 key 檔案。 |
 | `MAX_IMPORT_FILE_MB` | `50` | 否 | 匯入 CSV/XLSX 上限。 |
 | `MAX_MEDIA_FILE_MB` | `200` | 否 | 單一作品下載上限。 |
+| `IMPORT_ITEM_CONCURRENCY` | `1` | 否 | 單一匯入批次內同時處理作品數（下載/轉檔/縮圖）；建議從 `2-3` 起測，過高可能觸發來源限流或 CPU 飆高。 |
 | `SOCKET_CORS_ORIGIN` | _(空)_ | 跨網域時 | 留空 = same-origin；跨網域請填前端 origin（含 scheme）。 |
 
 ### 6. 反向代理建議

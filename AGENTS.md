@@ -147,6 +147,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 驗證四位以上評審時，Score 頁會顯示第四位以後的評分欄位。
 - [x] 驗證 `複評4` 可通過後端分數驗證並寫入 DB。
 - [x] 驗證匯入 normalization 會產出 `123a`、`123b` 與空白編號 fallback `2a`。
+- [x] Backend foundations for new features: 初評過半門檻、複評 top 60、隨機/順序排序、決評切點 override、mode preview、新增 ordering API。
 - [ ] Fine tuning：補更完整的 admin import history / sheet sync retry UI。
 - [ ] Fine tuning：針對多作品資料做更完整的 host 切換與 score/view 同步瀏覽器測試。
 - [ ] Fine tuning：補 mobile screenshot 檢查與 UI 細節修整。
@@ -164,6 +165,8 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - `processImportBatch` 開頭會把 `processedCount` 重設為 0，所以 worker 中途被 SIGKILL 後 BullMQ retry 整個 job 時，UI 進度會看到回到 0 — 這是正確行為，不是 regression。
 - Reviewer subagent 受 usage limit 影響未完成；主 agent 需要自行做最終 review。
 - `node_modules`、build output、`data` 都是 ignored，不應提交。
+- 初評 pass 門檻為 `Math.ceil(judgeCount/2)`，於 `score-service.recomputeWorkDerivedScores` 在每次 score 寫入時依當下 `prisma.judge.count()` 重算。已知限制：當管理者於評審清單變動（新增/刪除）後，先前已寫入的 `Work.initialPassed` 不會自動重算，要等到該作品下一次有 score 寫入才會更新。需要時可手動觸發 score upsert 或之後加 admin reflow API。
+- `OrderingState` 的 `shuffleOrder` 只在 admin `setDefaultMode("shuffle")` 或 `regenerateShuffle()` 才重洗；admin 切回 sequential 不會清掉，方便 host 即時切換回 shuffle 用同一份順序。新增/刪除 `Work` 後若想保留新作品也納入隨機，要 admin 觸發 regenerate。
 
 ## Architecture
 
@@ -290,9 +293,9 @@ Fields:
 
 Filtering:
 
-- Initial list: all works.
-- Secondary list: `Work.initialPassed`.
-- Final list: top 30 by `Work.secondaryTotal`, including ties at cutoff.
+- Initial list: all works. `initialPassed = (initial votes >= ceil(judgeCount / 2))`，過半（含一半）即通過。
+- Secondary list: `Work.initialPassed`。
+- Final list: top 60 by `Work.secondaryTotal`，含切點 ties overflow。`PresentationState.finalCutoff` 可由 host 透過 `POST /api/host/state` 暫時覆寫（1..1000，預設 60）。`work-service.listWorks("final")` 在沒帶 `topN` 時讀取 `PresentationState.finalCutoff`。
 
 ## Import Format
 

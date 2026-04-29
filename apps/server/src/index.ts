@@ -9,7 +9,7 @@ import { env } from "./env.js";
 import { requireAuth } from "./auth.js";
 import { closeSession, sessionMiddleware } from "./session.js";
 import { enqueueImport, queue } from "./queue.js";
-import { attachRealtime } from "./realtime.js";
+import { attachRealtime, emitOrderingChanged } from "./realtime.js";
 import { authRoutes } from "./routes/auth-routes.js";
 import { scoreRoutes } from "./routes/score-routes.js";
 import { stateRoutes } from "./routes/state-routes.js";
@@ -23,6 +23,8 @@ import {
 import { importTemplateCsvBuffer, importTemplateXlsxBuffer } from "./services/import-template-service.js";
 import { addJudge, deleteJudge, listJudges, replaceJudges } from "./services/judge-service.js";
 import { regenerateSidecarMetadata } from "./services/media-service.js";
+import { previewMode } from "./services/mode-preview-service.js";
+import { getOrderingState, regenerateShuffle, setActiveMode, setDefaultMode } from "./services/ordering-service.js";
 import { listWorks, metadataForWork } from "./services/work-service.js";
 import { processSheetSync } from "./services/sheet-service.js";
 import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
@@ -345,6 +347,64 @@ app.post("/api/sheet-sync/drain", requireAuth(), async (_req, res, next) => {
   try {
     await processSheetSync();
     res.status(202).json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/ordering", async (_req, res, next) => {
+  try {
+    res.json(await getOrderingState());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/admin/ordering", requireAuth(), async (req, res, next) => {
+  try {
+    const body = (req.body ?? {}) as { defaultMode?: unknown; regenerate?: unknown };
+    const defaultMode = typeof body.defaultMode === "string" ? body.defaultMode : undefined;
+    const regenerate = body.regenerate === true;
+    if (!defaultMode && !regenerate) {
+      throw new Error("Provide defaultMode and/or regenerate=true.");
+    }
+    let state = await getOrderingState();
+    if (defaultMode) {
+      state = await setDefaultMode(defaultMode, { regenerate });
+    } else if (regenerate) {
+      // regenerate without changing defaultMode — keep current default but reshuffle
+      state = await regenerateShuffle();
+    }
+    emitOrderingChanged(state);
+    res.json(state);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/sync/ordering", requireAuth(), async (req, res, next) => {
+  try {
+    const body = (req.body ?? {}) as { activeMode?: unknown };
+    const activeMode = typeof body.activeMode === "string" ? body.activeMode : undefined;
+    if (!activeMode) throw new Error("activeMode is required.");
+    const state = await setActiveMode(activeMode);
+    emitOrderingChanged(state);
+    res.json(state);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/host/preview-mode", requireAuth(), async (req, res, next) => {
+  try {
+    const mode = firstString(req.query.mode);
+    if (!mode) throw new Error("mode is required.");
+    const topNRaw = firstString(req.query.topN);
+    const topN = topNRaw !== undefined ? Number(topNRaw) : undefined;
+    if (topN !== undefined && (!Number.isFinite(topN) || !Number.isInteger(topN) || topN < 1)) {
+      throw new Error("topN must be a positive integer.");
+    }
+    res.json(await previewMode(mode, { topN }));
   } catch (error) {
     next(error);
   }

@@ -1,13 +1,20 @@
-import type { OrderingMode, OrderingStatePayload } from "@photo-grade/shared";
+import type {
+  ModePreviewResult,
+  OrderingMode,
+  OrderingStatePayload
+} from "@photo-grade/shared";
 import { LogIn, LogOut, Menu } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getAuthStatus,
   getMode,
+  getModePreview,
   getOrdering,
+  getPresentationState,
   getRuntimeConfig,
   logout,
   setActiveOrdering,
+  setFinalCutoff,
   setMode as setModeApi,
   type AuthMode,
   type AuthStatus
@@ -15,6 +22,7 @@ import {
 import { emitMode, onOrderingChanged, onSyncState } from "../api/socket";
 import { modeLabel } from "../state/gallery";
 import type { Mode } from "../types";
+import { ModeSwitchDialog } from "./ModeSwitchDialog";
 
 type RouteItem = {
   href: "/admin" | "/host" | "/score" | "/view";
@@ -50,8 +58,16 @@ export function TopNav() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [viewQrCode, setViewQrCode] = useState("");
   const [hostMode, setHostMode] = useState<Mode>("initial");
+  const [finalCutoff, setFinalCutoffState] = useState<number | null>(null);
   const [ordering, setOrdering] = useState<OrderingStatePayload | null>(null);
   const [orderingBusy, setOrderingBusy] = useState(false);
+  const [pendingMode, setPendingMode] = useState<Mode | null>(null);
+  const [previewResult, setPreviewResult] = useState<ModePreviewResult | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [dialogTopN, setDialogTopN] = useState<number | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
+  const previewReqId = useRef(0);
   const publicMode = isActive(path, "/view");
   const isHostPage = path.startsWith("/host");
   const isAuthenticated = authStatus?.authenticated ?? false;
@@ -127,8 +143,16 @@ export function TopNav() {
         if (live) setHostMode(mode);
       })
       .catch(() => undefined);
+    getPresentationState()
+      .then((state) => {
+        if (live && typeof state.finalCutoff === "number") setFinalCutoffState(state.finalCutoff);
+      })
+      .catch(() => undefined);
     const off = onSyncState((state) => {
-      if (state.mode && live) setHostMode(state.mode);
+      if (!live) return;
+      if (state.mode) setHostMode(state.mode);
+      const cutoff = (state as { finalCutoff?: unknown }).finalCutoff;
+      if (typeof cutoff === "number") setFinalCutoffState(cutoff);
     });
     return () => {
       live = false;
@@ -171,12 +195,78 @@ export function TopNav() {
     }
   };
 
+  const fetchPreview = useCallback(
+    async (mode: Mode, topN: number | null) => {
+      const reqId = ++previewReqId.current;
+      setPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        const options = topN !== null ? { topN } : {};
+        const result = await getModePreview(mode, options);
+        if (previewReqId.current !== reqId) return;
+        setPreviewResult(result);
+        if (mode === "final") {
+          setDialogTopN((current) => current ?? result.currentTopN);
+        }
+      } catch (error) {
+        if (previewReqId.current !== reqId) return;
+        setPreviewError(error instanceof Error ? error.message : String(error));
+      } finally {
+        if (previewReqId.current === reqId) setPreviewLoading(false);
+      }
+    },
+    []
+  );
+
+  const closeDialog = useCallback(() => {
+    setPendingMode(null);
+    setPreviewResult(null);
+    setPreviewError(null);
+    setDialogTopN(null);
+    setConfirmBusy(false);
+    setPreviewLoading(false);
+    previewReqId.current += 1;
+  }, []);
+
   const handleSelectMode = (mode: Mode) => {
     if (mode === hostMode) return;
-    setHostMode(mode);
-    emitMode(mode);
-    void setModeApi(mode).catch(() => undefined);
+    if (pendingMode) return;
+    setOpen(false);
+    setPendingMode(mode);
+    setPreviewResult(null);
+    setPreviewError(null);
+    setConfirmBusy(false);
+    const initialTopN = mode === "final" ? finalCutoff : null;
+    setDialogTopN(initialTopN);
+    void fetchPreview(mode, initialTopN);
   };
+
+  const handleDialogTopNChange = useCallback((next: number | null) => {
+    setDialogTopN(next);
+  }, []);
+
+  const handleDialogRefresh = useCallback(() => {
+    if (!pendingMode) return;
+    void fetchPreview(pendingMode, pendingMode === "final" ? dialogTopN : null);
+  }, [pendingMode, dialogTopN, fetchPreview]);
+
+  const handleDialogConfirm = useCallback(async () => {
+    if (!pendingMode) return;
+    setConfirmBusy(true);
+    try {
+      if (pendingMode === "final" && dialogTopN !== null && dialogTopN !== finalCutoff) {
+        await setFinalCutoff(dialogTopN);
+        setFinalCutoffState(dialogTopN);
+      }
+      await setModeApi(pendingMode);
+      setHostMode(pendingMode);
+      emitMode(pendingMode);
+      closeDialog();
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : String(error));
+      setConfirmBusy(false);
+    }
+  }, [pendingMode, dialogTopN, finalCutoff, closeDialog]);
 
   const handleSelectOrdering = (next: OrderingMode) => {
     if (orderingBusy) return;
@@ -301,6 +391,20 @@ export function TopNav() {
             </section>
           ) : null}
         </div>
+      ) : null}
+      {pendingMode ? (
+        <ModeSwitchDialog
+          fromMode={hostMode}
+          toMode={pendingMode}
+          preview={previewResult}
+          loading={previewLoading || confirmBusy}
+          error={previewError}
+          topN={dialogTopN}
+          onTopNChange={handleDialogTopNChange}
+          onRefresh={handleDialogRefresh}
+          onConfirm={handleDialogConfirm}
+          onCancel={closeDialog}
+        />
       ) : null}
     </nav>
   );

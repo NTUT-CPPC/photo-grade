@@ -48,11 +48,22 @@ export async function setPresentationState(input: PresentationPatch): Promise<Pr
     finalCutoff?: number;
     secondaryThreshold?: number | null;
   } = {};
+  const current = await prisma.presentationState.findUnique({ where: { id: 1 } });
   if (input.mode !== undefined) data.mode = validateMode(input.mode);
   const nextIdx = input.idx ?? input.index;
   if (nextIdx !== undefined) {
     if (!Number.isInteger(nextIdx) || nextIdx < 0) throw new Error("idx must be a non-negative integer.");
     data.idx = nextIdx;
+  }
+  const modeChanged =
+    data.mode !== undefined && current !== null && data.mode !== current.mode;
+  const workKeyProvided = input.workId !== undefined || input.workCode !== undefined || input.base !== undefined;
+  if (modeChanged && nextIdx === undefined) {
+    // Switching modes resets navigation to the cover so live clients always start at image 0.
+    data.idx = 0;
+  }
+  if (modeChanged && !workKeyProvided) {
+    data.workId = null;
   }
   if (input.finalCutoff !== undefined) {
     if (

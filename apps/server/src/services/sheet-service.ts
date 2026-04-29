@@ -282,7 +282,7 @@ function describeHeaderMessage(
 
 async function claimOutboxItems(scoreIds?: string[]) {
   const now = new Date();
-  const items = await prisma.sheetSyncOutbox.findMany({
+  const primary = await prisma.sheetSyncOutbox.findMany({
     where: {
       status: "PENDING",
       nextAttemptAt: { lte: now },
@@ -292,13 +292,44 @@ async function claimOutboxItems(scoreIds?: string[]) {
     orderBy: { createdAt: "asc" },
     take: 50
   });
-  if (!items.length) return [];
+  if (!primary.length) return [];
+
+  // Cross-stage sibling claim: pull every other outstanding outbox entry whose
+  // score belongs to one of the same workIds. This is what makes per-work
+  // consistency possible — when the user scores a 複評 we also re-write the 初評
+  // cells in the same sheet update, so any drift on older-stage cells (whether
+  // the outbox is stuck PENDING, the score is FAILED, or someone hand-edited
+  // the Sheet) gets corrected in the same batch. We deliberately do NOT touch
+  // siblings that are already PROCESSING — that means another worker is on it.
+  const workIds = Array.from(new Set(primary.map((item) => item.score.workId)));
+  const primaryIds = new Set(primary.map((item) => item.id));
+  const siblings = await prisma.sheetSyncOutbox.findMany({
+    where: {
+      id: { notIn: Array.from(primaryIds) },
+      status: { in: ["PENDING", "FAILED"] },
+      nextAttemptAt: { lte: now },
+      score: { workId: { in: workIds } }
+    },
+    include: { score: { include: { work: true } } },
+    orderBy: { createdAt: "asc" }
+  });
+
+  const items = [...primary, ...siblings];
+  const allOutboxIds = items.map((item) => item.id);
+  const allScoreIds = items.map((item) => item.scoreId);
+
+  // Mark everything PROCESSING in one shot. The `status in [PENDING, FAILED]`
+  // guard on the sibling slice prevents races with another worker that already
+  // claimed an entry for this work.
   await prisma.sheetSyncOutbox.updateMany({
-    where: { id: { in: items.map((item) => item.id) }, status: "PENDING" },
+    where: {
+      id: { in: allOutboxIds },
+      status: { in: ["PENDING", "FAILED"] }
+    },
     data: { status: "PROCESSING", error: null }
   });
   await prisma.score.updateMany({
-    where: { id: { in: items.map((item) => item.scoreId) } },
+    where: { id: { in: allScoreIds } },
     data: { sheetStatus: "PROCESSING", sheetError: null }
   });
   return items;

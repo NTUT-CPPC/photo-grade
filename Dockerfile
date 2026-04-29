@@ -31,7 +31,9 @@ COPY . .
 RUN npm run build
 
 FROM base AS runner
+ARG PHOTO_GRADE_VERSION=unknown
 ENV NODE_ENV=production
+ENV PHOTO_GRADE_VERSION=${PHOTO_GRADE_VERSION}
 COPY --from=builder /app/package.json /app/package-lock.json ./
 COPY --from=builder /app/apps/server/package.json apps/server/package.json
 COPY --from=builder /app/apps/worker/package.json apps/worker/package.json

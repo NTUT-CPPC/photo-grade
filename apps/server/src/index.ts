@@ -35,6 +35,7 @@ import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
 await ensureDataDirs();
 const serverDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(serverDir, "../../..");
+const appVersion = process.env.PHOTO_GRADE_VERSION || "unknown";
 
 const app = express();
 const upload = multer({
@@ -48,8 +49,8 @@ app.use(express.json({ limit: "5mb" }));
 app.use(sessionMiddleware());
 app.use(authRoutes);
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
+app.get("/health", (_req, res) => res.json({ ok: true, version: appVersion }));
+app.get("/api/health", (_req, res) => res.json({ ok: true, version: appVersion }));
 app.get("/api/runtime-config", (_req, res) =>
   res.json({
     entryBaseUrl: normalizeBaseUrl(env.PUBLIC_ENTRY_URL || env.APP_BASE_URL || `http://localhost:${env.PORT}`),
@@ -463,16 +464,21 @@ app.use("/admin", requireAuth(), staticWeb());
 app.use("/view", staticWeb());
 app.use("/", staticWeb());
 
-app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const message = error instanceof Error ? error.message : String(error);
-  res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+  const status = /not found/i.test(message) ? 404 : 400;
+  console.error(`[error] ${req.method} ${req.originalUrl} status=${status} ${errorSummary(error)}`);
+  if (error instanceof Error && error.stack) console.error(error.stack);
+  const cause = error instanceof Error ? error.cause : undefined;
+  if (cause) console.error(`[error] cause ${errorSummary(cause)}`);
+  res.status(status).json({ error: message });
 });
 
 const server = http.createServer(app);
 attachRealtime(server);
 
 server.listen(env.PORT, () => {
-  console.log(`photo-grade server listening on ${env.PORT}`);
+  console.log(`photo-grade server listening on ${env.PORT} version=${appVersion}`);
 });
 
 let shuttingDown = false;
@@ -528,4 +534,11 @@ function firstString(value: unknown): string | undefined {
 
 function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+function errorSummary(error: unknown): string {
+  if (!(error instanceof Error)) return `message=${JSON.stringify(String(error))}`;
+  const code = (error as { code?: unknown }).code;
+  const codeText = typeof code === "string" ? ` code=${code}` : "";
+  return `name=${error.name}${codeText} message=${JSON.stringify(error.message)}`;
 }

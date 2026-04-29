@@ -6,8 +6,10 @@
 #   3. 開啟 http://localhost:8080/view
 #
 # 所有未在 .env 設定的變數都會 fallback 到 ${VAR:-default} 的預設值。
-# BUILD_CONTEXT 預設為此專案 GitHub main 分支，可直接遠端下載並建置：
-#   BUILD_CONTEXT=https://github.com/NTUT-CPPC/photo-grade.git#main
+# BUILD_CONTEXT 預設為本地目錄（Synology Container Manager 建議做法）：
+#   BUILD_CONTEXT=.
+# 若改用 Git URL 當 context，拉取階段依賴建置器環境的 git，常見於 NAS 報
+# `unable to find 'git'`；建議先 clone 到 NAS 本地再用本地 context build。
 # AUTH_MODE=oidc 時，相關 OIDC_* / SESSION_SECRET 必填，否則 server 啟動會直接 fail。
 
 x-app-env: &app-env
@@ -65,7 +67,7 @@ x-app-env: &app-env
 services:
   app:
     build:
-      context: ${BUILD_CONTEXT:-https://github.com/NTUT-CPPC/photo-grade.git#main}
+      context: ${BUILD_CONTEXT:-.}
     # 啟動時 push Prisma schema，再起 server。
     command: sh -c "npm run db:push && npm run start"
     environment:
@@ -83,7 +85,7 @@ services:
 
   worker:
     build:
-      context: ${BUILD_CONTEXT:-https://github.com/NTUT-CPPC/photo-grade.git#main}
+      context: ${BUILD_CONTEXT:-.}
     command: npm run worker
     environment:
       <<: *app-env

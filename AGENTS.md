@@ -143,6 +143,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] Google Sheet sync 改為優先使用 DB 設定（無設定時 fallback `GOOGLE_SHEET_ID`），同步列含 `作品編號` + `作品連結`，並套用 worksheet/header 自動修復策略。
 - [x] Host ordering：切到 shuffle 且尚未有 `shuffleOrder` 時會自動生成一次；重複切換不重洗。
 - [x] 新增 admin 維運 API：匯出分數 CSV、清除分數、清除媒體資料；清除前強制匯出，所有匯出都備份至 `DATA_DIR/output`。
+- [x] 對齊 admin 前後端 API 契約：sheet config 接受 `shareLink` 輸入別名、補 `GET /api/admin/export/scores.csv` 下載路由，避免 UI 串接落差。
 
 ### In Progress / Next
 
@@ -237,6 +238,7 @@ Allowed subdirectories:
 - `/data/thumbnails`: compact images for score/list pages.
 - `/data/metadata`: ExifTool JSON.
 - `/data/logs`: optional runtime logs.
+- `/data/output`: score export backups（manual + pre-clear）。
 - `/data/exports`: future exports.
 - `/data/secrets`: optional service account JSON; never commit.
 
@@ -339,6 +341,7 @@ Current MVP only supports public Google Drive links and public URLs. Do not impl
 
 - `GOOGLE_SHEETS_ENABLED`
 - `GOOGLE_SHEET_ID`
+- `GOOGLE_SHEET_WORKSHEET`
 - `GOOGLE_SERVICE_ACCOUNT_JSON`
 - `GOOGLE_SERVICE_ACCOUNT_FILE`
 

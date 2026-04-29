@@ -127,24 +127,22 @@ app.get("/api/admin/judges", requireAuth(), async (_req, res, next) => {
   }
 });
 
-app.get("/api/admin/sheet-sync/config", requireAuth(), async (_req, res, next) => {
+app.get(["/api/admin/sheet-sync/config", "/api/admin/sheet-config"], requireAuth(), async (_req, res, next) => {
   try {
-    res.json({
-      enabled: env.GOOGLE_SHEETS_ENABLED,
-      ...(await getSheetSyncConfig())
-    });
+    const config = await getSheetSyncConfig();
+    res.json(toSheetConfigResponse(config));
   } catch (error) {
     next(error);
   }
 });
 
-app.put("/api/admin/sheet-sync/config", requireAuth(), async (req, res, next) => {
+app.put(["/api/admin/sheet-sync/config", "/api/admin/sheet-config"], requireAuth(), async (req, res, next) => {
   try {
-    const spreadsheet = firstString(req.body?.spreadsheet);
+    const spreadsheet = firstString(req.body?.spreadsheet) ?? firstString(req.body?.shareLink);
     if (!spreadsheet) throw new Error("spreadsheet is required.");
     const worksheetTitle = firstString(req.body?.worksheetTitle);
     const config = await setSheetSyncConfig({ spreadsheet, worksheetTitle });
-    res.json({ enabled: env.GOOGLE_SHEETS_ENABLED, ...config });
+    res.json(toSheetConfigResponse(config));
   } catch (error) {
     next(error);
   }
@@ -182,6 +180,14 @@ app.get("/api/admin/import/template.csv", requireAuth(), (_req, res) => {
 });
 
 app.post("/api/admin/maintenance/export-scores", requireAuth(), async (_req, res, next) => {
+  try {
+    sendCsvDownload(res, await exportScoresCsv("manual"));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/export/scores.csv", requireAuth(), async (_req, res, next) => {
   try {
     sendCsvDownload(res, await exportScoresCsv("manual"));
   } catch (error) {
@@ -601,6 +607,24 @@ function firstString(value: unknown): string | undefined {
 
 function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, "");
+}
+
+function toSheetConfigResponse(config: {
+  source: "db" | "env" | "none";
+  spreadsheetId: string | null;
+  spreadsheetUrl: string | null;
+  worksheetTitle: string;
+  updatedAt: string | null;
+}) {
+  return {
+    enabled: env.GOOGLE_SHEETS_ENABLED,
+    source: config.source,
+    spreadsheetId: config.spreadsheetId,
+    spreadsheetUrl: config.spreadsheetUrl,
+    shareLink: config.spreadsheetUrl ?? config.spreadsheetId ?? "",
+    worksheetTitle: config.worksheetTitle,
+    updatedAt: config.updatedAt
+  };
 }
 
 function errorSummary(error: unknown): string {

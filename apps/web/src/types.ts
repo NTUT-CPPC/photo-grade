@@ -109,6 +109,7 @@ export type AdminSheetConfig = {
   shareLink: string;
   spreadsheetId?: string | null;
   worksheetTitle?: string | null;
+  serviceAccountEmail?: string | null;
   headerOk?: boolean;
   headerAction?: string | null;
   headerMessage?: string | null;

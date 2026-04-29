@@ -685,7 +685,15 @@ export function AdminPage() {
 
         <section className="admin-block">
           <h2>Google Sheet 同步設定</h2>
-          <p className="system-note">Google Sheet 需先開啟「知道連結的任何人可編輯」，同步完成後請記得關閉或收斂權限。</p>
+          <p className="system-note">
+            請把目標試算表分享給以下服務帳號（編輯者）：
+            <strong>{sheetConfig?.serviceAccountEmail ?? " 尚未偵測到 service account email"}</strong>
+          </p>
+          {!sheetConfig?.serviceAccountEmail ? (
+            <p className="system-note error">
+              尚未解析到服務帳號。請確認 `GOOGLE_SERVICE_ACCOUNT_JSON` 或 `GOOGLE_SERVICE_ACCOUNT_FILE` 設定正確。
+            </p>
+          ) : null}
           <label className="field-label">
             <span>共用連結</span>
             <input
@@ -701,7 +709,7 @@ export function AdminPage() {
               type="button"
               onClick={() => void saveSheetConfig()}
               disabled={sheetBusy}
-              title="儲存後會由後端解析 Spreadsheet ID，並檢查/建立工作表 Header。"
+              title="儲存後會由後端解析 Spreadsheet ID，並在同步時檢查/建立工作表 Header。"
             >
               <Save size={16} />
               {sheetBusy ? "儲存中…" : "儲存設定"}

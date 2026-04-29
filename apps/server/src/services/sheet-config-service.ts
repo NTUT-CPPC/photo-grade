@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import { env } from "../env.js";
 import { prisma } from "../prisma.js";
 
@@ -115,6 +116,21 @@ export function parseSpreadsheetId(input: string): string | null {
   }
 
   return null;
+}
+
+export async function getServiceAccountEmail(): Promise<string | null> {
+  try {
+    const payload = env.GOOGLE_SERVICE_ACCOUNT_JSON
+      ? JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_JSON)
+      : env.GOOGLE_SERVICE_ACCOUNT_FILE
+        ? JSON.parse(await fs.readFile(env.GOOGLE_SERVICE_ACCOUNT_FILE, "utf8"))
+        : null;
+    if (!payload || typeof payload !== "object") return null;
+    const email = (payload as { client_email?: unknown }).client_email;
+    return typeof email === "string" && email.trim() ? email.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 function looksLikeUrl(value: string): boolean {

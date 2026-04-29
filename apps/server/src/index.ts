@@ -29,7 +29,7 @@ import { getOrderingState, regenerateShuffle, setActiveMode, setDefaultMode } fr
 import { setPresentationState } from "./services/presentation-service.js";
 import { getRuleConfig, setRuleConfig } from "./services/rule-config-service.js";
 import { recomputeAllInitialPassed } from "./services/score-service.js";
-import { getSheetSyncConfig, setSheetSyncConfig } from "./services/sheet-config-service.js";
+import { getServiceAccountEmail, getSheetSyncConfig, setSheetSyncConfig } from "./services/sheet-config-service.js";
 import { listWorks, metadataForWork } from "./services/work-service.js";
 import { processSheetSync } from "./services/sheet-service.js";
 import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
@@ -130,7 +130,7 @@ app.get("/api/admin/judges", requireAuth(), async (_req, res, next) => {
 app.get(["/api/admin/sheet-sync/config", "/api/admin/sheet-config"], requireAuth(), async (_req, res, next) => {
   try {
     const config = await getSheetSyncConfig();
-    res.json(toSheetConfigResponse(config));
+    res.json(toSheetConfigResponse(config, await getServiceAccountEmail()));
   } catch (error) {
     next(error);
   }
@@ -142,7 +142,7 @@ app.put(["/api/admin/sheet-sync/config", "/api/admin/sheet-config"], requireAuth
     if (!spreadsheet) throw new Error("spreadsheet is required.");
     const worksheetTitle = firstString(req.body?.worksheetTitle);
     const config = await setSheetSyncConfig({ spreadsheet, worksheetTitle });
-    res.json(toSheetConfigResponse(config));
+    res.json(toSheetConfigResponse(config, await getServiceAccountEmail()));
   } catch (error) {
     next(error);
   }
@@ -615,7 +615,7 @@ function toSheetConfigResponse(config: {
   spreadsheetUrl: string | null;
   worksheetTitle: string;
   updatedAt: string | null;
-}) {
+}, serviceAccountEmail: string | null) {
   return {
     enabled: env.GOOGLE_SHEETS_ENABLED,
     source: config.source,
@@ -623,7 +623,8 @@ function toSheetConfigResponse(config: {
     spreadsheetUrl: config.spreadsheetUrl,
     shareLink: config.spreadsheetUrl ?? config.spreadsheetId ?? "",
     worksheetTitle: config.worksheetTitle,
-    updatedAt: config.updatedAt
+    updatedAt: config.updatedAt,
+    serviceAccountEmail
   };
 }
 

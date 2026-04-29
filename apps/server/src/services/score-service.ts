@@ -86,15 +86,31 @@ function normalizeScoreInput(input: ScoreInput): NormalizedScoreInput {
   };
 }
 
+type DerivedClient = Pick<typeof prisma, "score" | "work" | "judge" | "presentationState">;
+
+export async function getActiveInitialThreshold(client: DerivedClient = prisma): Promise<number> {
+  const [presentation, judgeCount] = await Promise.all([
+    client.presentationState.findUnique({ where: { id: 1 } }),
+    client.judge.count()
+  ]);
+  const override = presentation?.secondaryThreshold ?? null;
+  if (override !== null && override > 0) return override;
+  return Math.ceil(Math.max(judgeCount, 1) / 2);
+}
+
+export async function getDefaultInitialThreshold(client: DerivedClient = prisma): Promise<number> {
+  const judgeCount = await client.judge.count();
+  return Math.ceil(Math.max(judgeCount, 1) / 2);
+}
+
 async function recomputeWorkDerivedScores(
   workId: string,
-  client: Pick<typeof prisma, "score" | "work" | "judge"> = prisma
+  client: DerivedClient = prisma
 ): Promise<void> {
   const scores = await client.score.findMany({ where: { workId } });
   const initial = scores.find((s) => s.round === "initial" && s.field === "初評")?.value ?? null;
   const secondaryTotal = scores.filter((s) => s.round === "secondary").reduce((sum, s) => sum + s.value, 0);
-  const judgeCount = await client.judge.count();
-  const threshold = Math.ceil(Math.max(judgeCount, 1) / 2);
+  const threshold = await getActiveInitialThreshold(client);
   await client.work.update({
     where: { id: workId },
     data: {
@@ -102,4 +118,25 @@ async function recomputeWorkDerivedScores(
       secondaryTotal
     }
   });
+}
+
+export async function recomputeAllInitialPassed(client: DerivedClient = prisma): Promise<{ updated: number }> {
+  const threshold = await getActiveInitialThreshold(client);
+  const works = await client.work.findMany({
+    select: {
+      id: true,
+      initialPassed: true,
+      scores: { where: { round: "initial", field: "初評" }, select: { value: true } }
+    }
+  });
+  let updated = 0;
+  for (const work of works) {
+    const initial = work.scores[0]?.value ?? null;
+    const next = initial !== null ? initial >= threshold : false;
+    if (next !== work.initialPassed) {
+      await client.work.update({ where: { id: work.id }, data: { initialPassed: next } });
+      updated++;
+    }
+  }
+  return { updated };
 }

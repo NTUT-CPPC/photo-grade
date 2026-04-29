@@ -23,6 +23,7 @@ export interface PresentationStatePayload {
   workCode: string | null;
   idx: number;
   finalCutoff: number;
+  secondaryThreshold: number | null;
   updatedAt: string;
 }
 
@@ -46,6 +47,8 @@ export interface ModePreviewResult {
   currentTopN: number;
   judgeCount?: number;
   initialThreshold?: number;
+  defaultThreshold?: number;
+  currentThreshold?: number;
 }
 
 export interface ScoreInput {

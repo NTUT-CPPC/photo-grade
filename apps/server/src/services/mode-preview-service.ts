@@ -2,10 +2,12 @@ import type { JudgingMode, ModePreviewResult } from "@photo-grade/shared";
 import { prisma } from "../prisma.js";
 import { listJudges } from "./judge-service.js";
 import { getPresentationState } from "./presentation-service.js";
+import { getActiveInitialThreshold, getDefaultInitialThreshold } from "./score-service.js";
 import { DEFAULT_FINAL_TOP_N } from "./work-service.js";
 
 export interface ModePreviewOptions {
   topN?: number;
+  threshold?: number;
 }
 
 const VALID_MODES: ReadonlySet<JudgingMode> = new Set(["initial", "secondary", "final"]);
@@ -32,19 +34,32 @@ export async function previewMode(
   }
 
   if (mode === "secondary") {
-    const count = await prisma.work.count({ where: { initialPassed: true } });
     const judges = await listJudges();
     const judgeCount = Math.max(judges.length, 1);
-    const initialThreshold = Math.ceil(judgeCount / 2);
+    const defaultThreshold = await getDefaultInitialThreshold();
+    let threshold = options.threshold;
+    if (threshold === undefined) {
+      threshold = await getActiveInitialThreshold();
+    }
+    if (!Number.isInteger(threshold) || threshold < 1) threshold = defaultThreshold;
+
+    // Count works whose initial-vote tally meets the threshold.
+    const initialScores = await prisma.score.findMany({
+      where: { round: "initial", field: "初評" },
+      select: { workId: true, value: true }
+    });
+    const passing = initialScores.filter((row) => row.value >= threshold).length;
     return {
       mode,
-      count,
-      baseCount: count,
+      count: passing,
+      baseCount: passing,
       overflow: 0,
       defaultTopN: DEFAULT_FINAL_TOP_N,
       currentTopN: DEFAULT_FINAL_TOP_N,
       judgeCount,
-      initialThreshold
+      initialThreshold: threshold,
+      defaultThreshold,
+      currentThreshold: threshold
     };
   }
 

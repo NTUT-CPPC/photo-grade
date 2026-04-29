@@ -404,7 +404,15 @@ app.get("/api/host/preview-mode", requireAuth(), async (req, res, next) => {
     if (topN !== undefined && (!Number.isFinite(topN) || !Number.isInteger(topN) || topN < 1)) {
       throw new Error("topN must be a positive integer.");
     }
-    res.json(await previewMode(mode, { topN }));
+    const thresholdRaw = firstString(req.query.threshold);
+    const threshold = thresholdRaw !== undefined ? Number(thresholdRaw) : undefined;
+    if (
+      threshold !== undefined &&
+      (!Number.isFinite(threshold) || !Number.isInteger(threshold) || threshold < 1)
+    ) {
+      throw new Error("threshold must be a positive integer.");
+    }
+    res.json(await previewMode(mode, { topN, threshold }));
   } catch (error) {
     next(error);
   }

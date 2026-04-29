@@ -1,11 +1,15 @@
 import { type JudgingMode, type PresentationStatePayload } from "@photo-grade/shared";
 import { prisma } from "../prisma.js";
+import { recomputeAllInitialPassed } from "./score-service.js";
 
 const MODES = new Set<JudgingMode>(["initial", "secondary", "final"]);
 
 const DEFAULT_FINAL_CUTOFF = 60;
 const MIN_FINAL_CUTOFF = 1;
 const MAX_FINAL_CUTOFF = 1000;
+
+const MIN_SECONDARY_THRESHOLD = 1;
+const MAX_SECONDARY_THRESHOLD = 1000;
 
 export type PresentationPatch = {
   mode?: JudgingMode;
@@ -15,6 +19,7 @@ export type PresentationPatch = {
   idx?: number;
   index?: number;
   finalCutoff?: number;
+  secondaryThreshold?: number | null;
 };
 
 export async function getPresentationState(): Promise<PresentationStatePayload> {
@@ -30,12 +35,19 @@ export async function getPresentationState(): Promise<PresentationStatePayload> 
     workCode: work?.code ?? null,
     idx: state.idx,
     finalCutoff: state.finalCutoff ?? DEFAULT_FINAL_CUTOFF,
+    secondaryThreshold: state.secondaryThreshold ?? null,
     updatedAt: state.updatedAt.toISOString()
   };
 }
 
 export async function setPresentationState(input: PresentationPatch): Promise<PresentationStatePayload> {
-  const data: { mode?: JudgingMode; workId?: string | null; idx?: number; finalCutoff?: number } = {};
+  const data: {
+    mode?: JudgingMode;
+    workId?: string | null;
+    idx?: number;
+    finalCutoff?: number;
+    secondaryThreshold?: number | null;
+  } = {};
   if (input.mode !== undefined) data.mode = validateMode(input.mode);
   const nextIdx = input.idx ?? input.index;
   if (nextIdx !== undefined) {
@@ -52,6 +64,25 @@ export async function setPresentationState(input: PresentationPatch): Promise<Pr
     }
     data.finalCutoff = input.finalCutoff;
   }
+  let secondaryThresholdChanged = false;
+  if (input.secondaryThreshold !== undefined) {
+    if (input.secondaryThreshold === null) {
+      data.secondaryThreshold = null;
+      secondaryThresholdChanged = true;
+    } else {
+      if (
+        !Number.isInteger(input.secondaryThreshold) ||
+        input.secondaryThreshold < MIN_SECONDARY_THRESHOLD ||
+        input.secondaryThreshold > MAX_SECONDARY_THRESHOLD
+      ) {
+        throw new Error(
+          `secondaryThreshold must be an integer between ${MIN_SECONDARY_THRESHOLD} and ${MAX_SECONDARY_THRESHOLD}, or null.`
+        );
+      }
+      data.secondaryThreshold = input.secondaryThreshold;
+      secondaryThresholdChanged = true;
+    }
+  }
 
   const workKey = input.workId ?? input.workCode ?? input.base;
   if (workKey !== undefined) {
@@ -66,9 +97,16 @@ export async function setPresentationState(input: PresentationPatch): Promise<Pr
       mode: data.mode ?? "initial",
       workId: data.workId,
       idx: data.idx ?? 0,
-      finalCutoff: data.finalCutoff ?? DEFAULT_FINAL_CUTOFF
+      finalCutoff: data.finalCutoff ?? DEFAULT_FINAL_CUTOFF,
+      secondaryThreshold: data.secondaryThreshold ?? null
     }
   });
+
+  if (secondaryThresholdChanged) {
+    // Threshold change retroactively flips initialPassed for already-scored works.
+    await recomputeAllInitialPassed();
+  }
+
   return getPresentationState();
 }
 

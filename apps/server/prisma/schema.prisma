@@ -59,12 +59,13 @@ model Score {
 }
 
 model PresentationState {
-  id          Int      @id @default(1)
-  mode        String   @default("initial")
-  workId      String?
-  idx         Int      @default(0)
-  finalCutoff Int      @default(60)
-  updatedAt   DateTime @updatedAt
+  id                 Int      @id @default(1)
+  mode               String   @default("initial")
+  workId             String?
+  idx                Int      @default(0)
+  finalCutoff        Int      @default(60)
+  secondaryThreshold Int?
+  updatedAt          DateTime @updatedAt
 }
 
 model OrderingState {

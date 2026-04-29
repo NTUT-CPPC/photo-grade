@@ -2,9 +2,13 @@ import type { OrderingStatePayload, RuleConfigPayload } from "@photo-grade/share
 import { Check, Download, GripVertical, Plus, RotateCcw, Save, Shuffle, Trash2, Upload, X } from "lucide-react";
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
+  clearMediaData,
+  clearScoresData,
   cancelImport,
   confirmImport,
   dryRunImport,
+  exportScoresCsv,
+  getAdminSheetConfig,
   getActiveImport,
   getImportProgress,
   getJudges,
@@ -12,10 +16,17 @@ import {
   getRuleConfig,
   saveJudges,
   saveRuleConfig,
+  saveAdminSheetConfig,
   setDefaultOrdering
 } from "../api/client";
 import { onImportProgress, onOrderingChanged } from "../api/socket";
-import type { ImportDryRunResult, ImportProgress, Judge } from "../types";
+import type {
+  AdminClearRequest,
+  AdminSheetConfig,
+  ImportDryRunResult,
+  ImportProgress,
+  Judge
+} from "../types";
 
 type JudgeDraft = {
   clientId: string;
@@ -33,6 +44,8 @@ type ActiveBatchMeta = {
   fileName: string;
   createdAt: string;
 };
+
+type MaintenanceAction = "clearScores" | "clearMedia";
 
 export function AdminPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -60,6 +73,15 @@ export function AdminPage() {
   const [ruleBusy, setRuleBusy] = useState(false);
   const [ruleNote, setRuleNote] = useState<string | null>(null);
   const [ruleError, setRuleError] = useState<string | null>(null);
+  const [sheetConfig, setSheetConfig] = useState<AdminSheetConfig | null>(null);
+  const [sheetShareLinkDraft, setSheetShareLinkDraft] = useState("");
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const [sheetNote, setSheetNote] = useState<string | null>(null);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+  const [maintenanceBusy, setMaintenanceBusy] = useState(false);
+  const [maintenanceNote, setMaintenanceNote] = useState<string | null>(null);
+  const [maintenanceError, setMaintenanceError] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<MaintenanceAction | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dryRunAbortRef = useRef<AbortController | null>(null);
@@ -135,6 +157,20 @@ export function AdminPage() {
         setRuleThresholdDraft(
           config.defaultSecondaryThreshold === null ? "" : String(config.defaultSecondaryThreshold)
         );
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let live = true;
+    getAdminSheetConfig()
+      .then((config) => {
+        if (!live) return;
+        setSheetConfig(config);
+        setSheetShareLinkDraft(config.shareLink ?? "");
       })
       .catch(() => undefined);
     return () => {
@@ -358,6 +394,80 @@ export function AdminPage() {
     }
   }
 
+  async function saveSheetConfig() {
+    setSheetBusy(true);
+    setSheetError(null);
+    setSheetNote(null);
+    try {
+      const shareLink = sheetShareLinkDraft.trim();
+      const next = await saveAdminSheetConfig({ shareLink });
+      setSheetConfig(next);
+      setSheetShareLinkDraft(next.shareLink ?? shareLink);
+      setSheetNote("已儲存 Google Sheet 設定。");
+    } catch (err) {
+      setSheetError(err instanceof Error ? err.message : "儲存 Google Sheet 設定失敗");
+    } finally {
+      setSheetBusy(false);
+    }
+  }
+
+  async function exportScoresDownload(tag: "manual" | "clear-scores" | "clear-media"): Promise<string> {
+    const { blob, filename } = await exportScoresCsv();
+    const effectiveName =
+      filename ??
+      `photo-grade-scores-${new Date().toISOString().replace(/[:.]/g, "-")}-${tag}.csv`;
+    triggerBlobDownload(blob, effectiveName);
+    return effectiveName;
+  }
+
+  async function handleManualExport() {
+    setMaintenanceBusy(true);
+    setMaintenanceError(null);
+    setMaintenanceNote(null);
+    try {
+      const fileName = await exportScoresDownload("manual");
+      setMaintenanceNote(`已匯出 ${fileName}`);
+    } catch (err) {
+      setMaintenanceError(err instanceof Error ? err.message : "匯出評分 CSV 失敗");
+    } finally {
+      setMaintenanceBusy(false);
+    }
+  }
+
+  async function runConfirmedMaintenance(action: MaintenanceAction) {
+    setMaintenanceBusy(true);
+    setMaintenanceError(null);
+    setMaintenanceNote(null);
+    try {
+      const exportedFileName = await exportScoresDownload(
+        action === "clearScores" ? "clear-scores" : "clear-media"
+      );
+      const payload: AdminClearRequest = {
+        requireExport: true,
+        exportedAt: new Date().toISOString(),
+        exportedFileName
+      };
+      if (action === "clearScores") {
+        await clearScoresData(payload);
+        setMaintenanceNote(`已先匯出 ${exportedFileName}，並清除評分資料。`);
+      } else {
+        await clearMediaData(payload);
+        setMaintenanceNote(`已先匯出 ${exportedFileName}，並清除圖片與媒體資料。`);
+      }
+      setConfirmAction(null);
+    } catch (err) {
+      setMaintenanceError(
+        err instanceof Error
+          ? err.message
+          : action === "clearScores"
+            ? "清除評分資料失敗"
+            : "清除圖片資料失敗"
+      );
+    } finally {
+      setMaintenanceBusy(false);
+    }
+  }
+
   function addJudgeName() {
     const name = judgeName.trim();
     if (!name) return;
@@ -573,6 +683,54 @@ export function AdminPage() {
         </section>
 
         <section className="admin-block">
+          <h2>Google Sheet 同步設定</h2>
+          <label className="field-label">
+            <span>共用連結</span>
+            <input
+              type="url"
+              value={sheetShareLinkDraft}
+              onChange={(event) => setSheetShareLinkDraft(event.target.value)}
+              placeholder="https://docs.google.com/spreadsheets/d/..."
+              disabled={sheetBusy}
+            />
+          </label>
+          <div className="admin-actions">
+            <button
+              type="button"
+              onClick={() => void saveSheetConfig()}
+              disabled={sheetBusy}
+              title="儲存後會由後端解析 Spreadsheet ID，並檢查/建立工作表 Header。"
+            >
+              <Save size={16} />
+              {sheetBusy ? "儲存中…" : "儲存設定"}
+            </button>
+          </div>
+          <div className="sheet-config-status">
+            <p className="system-note">
+              解析 Spreadsheet ID：<strong>{sheetConfig?.spreadsheetId ?? "尚未解析"}</strong>
+            </p>
+            <p className="system-note">
+              工作表：<strong>{sheetConfig?.worksheetTitle ?? "未設定"}</strong>
+            </p>
+            <p className="system-note">
+              Header 檢查：
+              <strong>
+                {sheetConfig?.headerOk
+                  ? " 正常"
+                  : sheetConfig?.headerAction
+                    ? ` ${sheetConfig.headerAction}`
+                    : " 待檢查"}
+              </strong>
+            </p>
+            {sheetConfig?.headerMessage ? (
+              <p className="system-note">{sheetConfig.headerMessage}</p>
+            ) : null}
+          </div>
+          {sheetNote ? <p className="system-note">{sheetNote}</p> : null}
+          {sheetError ? <p className="system-note error">{sheetError}</p> : null}
+        </section>
+
+        <section className="admin-block">
           <h2>匯入範本下載</h2>
           <div className="admin-actions">
             <a className="admin-link-btn" href="/api/admin/import/template.csv" download>
@@ -584,6 +742,39 @@ export function AdminPage() {
               Excel 範本
             </a>
           </div>
+        </section>
+
+        <section className="admin-block">
+          <h2>資料維護</h2>
+          <div className="admin-actions">
+            <button type="button" onClick={() => void handleManualExport()} disabled={maintenanceBusy}>
+              <Download size={16} />
+              匯出評分 CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmAction("clearScores")}
+              disabled={maintenanceBusy}
+              title="會先匯出評分 CSV 並下載，成功後才清除評分資料。"
+            >
+              <Trash2 size={16} />
+              清除評分資料
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmAction("clearMedia")}
+              disabled={maintenanceBusy}
+              title="會先匯出評分 CSV 並下載，成功後才清除圖片資料。"
+            >
+              <Trash2 size={16} />
+              清除圖片資料
+            </button>
+          </div>
+          <p className="system-note ordering-help">
+            清除動作會先強制匯出評分 CSV。若匯出或下載失敗，清除流程會中止。
+          </p>
+          {maintenanceNote ? <p className="system-note">{maintenanceNote}</p> : null}
+          {maintenanceError ? <p className="system-note error">{maintenanceError}</p> : null}
         </section>
 
         <section className="admin-block">
@@ -684,6 +875,16 @@ export function AdminPage() {
         ) : null}
         </section>
       </section>
+      {confirmAction ? (
+        <ConfirmMaintenanceDialog
+          action={confirmAction}
+          busy={maintenanceBusy}
+          onCancel={() => {
+            if (!maintenanceBusy) setConfirmAction(null);
+          }}
+          onConfirm={() => void runConfirmedMaintenance(confirmAction)}
+        />
+      ) : null}
       {dryRun && dryRunDialogOpen ? (
         <DryRunDialog result={dryRun} total={total} onClose={() => setDryRunDialogOpen(false)} />
       ) : null}
@@ -703,6 +904,71 @@ function formatRelativeTime(iso: string): string {
   if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分鐘前`;
   if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} 小時前`;
   return `${Math.floor(diffSec / 86400)} 天前`;
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+}
+
+function ConfirmMaintenanceDialog({
+  action,
+  busy,
+  onCancel,
+  onConfirm
+}: {
+  action: MaintenanceAction;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape" && !busy) onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onCancel]);
+
+  const title = action === "clearScores" ? "清除評分資料" : "清除圖片與媒體資料";
+
+  return (
+    <div className="score-detail-backdrop" onClick={() => (!busy ? onCancel() : undefined)} role="presentation">
+      <div
+        className="score-detail"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="score-detail__head">
+          <span className="score-detail__title">{title}</span>
+          <button type="button" className="score-detail__close" onClick={onCancel} aria-label="關閉" disabled={busy}>
+            ×
+          </button>
+        </header>
+        <div className="score-detail__body">
+          <p className="system-note">
+            這個動作會先匯出並下載評分 CSV。只有在匯出成功後才會繼續清除。
+          </p>
+        </div>
+        <footer className="mode-switch-dialog__footer">
+          <button type="button" className="top-nav-mode-btn" onClick={onCancel} disabled={busy}>
+            取消
+          </button>
+          <button type="button" className="top-nav-mode-btn active" onClick={onConfirm} disabled={busy}>
+            {busy ? "執行中…" : "確認並執行"}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
 }
 
 function DryRunSummary({

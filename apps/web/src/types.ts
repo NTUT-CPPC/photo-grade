@@ -104,3 +104,28 @@ export type Judge = {
   name: string;
   sortOrder: number;
 };
+
+export type AdminSheetConfig = {
+  shareLink: string;
+  spreadsheetId?: string | null;
+  worksheetTitle?: string | null;
+  headerOk?: boolean;
+  headerAction?: string | null;
+  headerMessage?: string | null;
+  updatedAt?: string | null;
+};
+
+export type AdminSheetConfigUpdate = {
+  shareLink: string;
+};
+
+export type AdminClearRequest = {
+  requireExport: true;
+  exportedAt: string;
+  exportedFileName?: string;
+};
+
+export type AdminClearResponse = {
+  ok: boolean;
+  message?: string;
+};

@@ -1096,6 +1096,7 @@ button:disabled {
 
 .admin-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.6rem;
   margin-bottom: 1rem;
 }
@@ -1169,6 +1170,15 @@ button:disabled {
 .ordering-help {
   font-size: 0.85rem;
   line-height: 1.4;
+}
+
+.sheet-config-status {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.sheet-config-status .system-note {
+  margin: 0;
 }
 
 .rule-config-grid {

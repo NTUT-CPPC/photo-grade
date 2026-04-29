@@ -144,6 +144,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] Host ordering：切到 shuffle 且尚未有 `shuffleOrder` 時會自動生成一次；重複切換不重洗。
 - [x] 新增 admin 維運 API：匯出分數 CSV、清除分數、清除媒體資料；清除前強制匯出，所有匯出都備份至 `DATA_DIR/output`。
 - [x] 對齊 admin 前後端 API 契約：sheet config 接受 `shareLink` 輸入別名、補 `GET /api/admin/export/scores.csv` 下載路由，避免 UI 串接落差。
+- [x] Admin 文案補充共用權限說明：作品連結需「知道連結可檢視」、Google Sheet 需「知道連結可編輯（用完關閉）」。
 
 ### In Progress / Next
 

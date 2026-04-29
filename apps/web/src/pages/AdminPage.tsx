@@ -521,6 +521,7 @@ export function AdminPage() {
           <span className="mode-banner">管理</span>
           <h1>匯入作品</h1>
           <p>選擇 CSV 或 Excel 檔案，系統會先做試跑檢查欄位後再確認匯入。</p>
+          <p className="system-note">作品連結中的檔案必須是「知道連結的任何人可檢視」才能下載。</p>
         </div>
       </section>
       <section className="admin-controls">
@@ -684,6 +685,7 @@ export function AdminPage() {
 
         <section className="admin-block">
           <h2>Google Sheet 同步設定</h2>
+          <p className="system-note">Google Sheet 需先開啟「知道連結的任何人可編輯」，同步完成後請記得關閉或收斂權限。</p>
           <label className="field-label">
             <span>共用連結</span>
             <input

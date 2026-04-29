@@ -4,6 +4,7 @@ import {
   LINK_HEADER,
   UPDATED_AT_HEADER,
   buildCanonicalHeaderForJudgeCount,
+  computeEffectiveHeader,
   formatUpdatedAt
 } from "../apps/server/src/services/sheet-header.js";
 
@@ -49,6 +50,58 @@ describe("buildCanonicalHeaderForJudgeCount", () => {
       UPDATED_AT_HEADER
     ]);
     expect(buildCanonicalHeaderForJudgeCount(-2)).toEqual(buildCanonicalHeaderForJudgeCount(0));
+  });
+});
+
+describe("computeEffectiveHeader", () => {
+  const canonical = buildCanonicalHeaderForJudgeCount(3);
+
+  it("treats an empty existing header as fully missing — returns canonical order", () => {
+    const result = computeEffectiveHeader([], canonical);
+    expect(result.header).toEqual(canonical);
+    expect(result.appended).toEqual(canonical);
+  });
+
+  it("returns the canonical header unchanged when it already matches", () => {
+    const result = computeEffectiveHeader(canonical, canonical);
+    expect(result.header).toEqual(canonical);
+    expect(result.appended).toEqual([]);
+  });
+
+  it("preserves user reordering of canonical columns without re-adding them", () => {
+    const reordered = [...canonical].reverse();
+    const result = computeEffectiveHeader(reordered, canonical);
+    expect(result.header).toEqual(reordered);
+    expect(result.appended).toEqual([]);
+  });
+
+  it("preserves user-added extra columns and appends missing canonical columns at the end", () => {
+    const existing = [CODE_HEADER, LINK_HEADER, "初評", "備註"];
+    const result = computeEffectiveHeader(existing, canonical);
+    const expectedAppended = canonical.filter((column) => !existing.includes(column));
+    expect(result.header).toEqual([...existing, ...expectedAppended]);
+    expect(result.appended).toEqual(expectedAppended);
+    // 備註 (a user-added extra column) must be retained in its original spot.
+    expect(result.header).toContain("備註");
+    // 最後更新時間 should be appended near the end since it was missing.
+    expect(result.header[result.header.length - 1]).toBe(UPDATED_AT_HEADER);
+  });
+
+  it("appends a missing 作品編號 at the end (no special-casing of code/link cols)", () => {
+    const existing = canonical.filter((column) => column !== CODE_HEADER);
+    const result = computeEffectiveHeader(existing, canonical);
+    expect(result.appended).toEqual([CODE_HEADER]);
+    expect(result.header).toEqual([...existing, CODE_HEADER]);
+  });
+
+  it("normalizes whitespace-only existing cells and treats them as non-canonical placeholders", () => {
+    const existing = ["  ", CODE_HEADER, LINK_HEADER, "初評"];
+    const result = computeEffectiveHeader(existing, canonical);
+    // The whitespace cell becomes "" and is preserved as a placeholder column.
+    expect(result.header[0]).toBe("");
+    // Missing canonical columns are appended in canonical order.
+    const expectedAppended = canonical.filter((column) => !["", CODE_HEADER, LINK_HEADER, "初評"].includes(column));
+    expect(result.appended).toEqual(expectedAppended);
   });
 });
 

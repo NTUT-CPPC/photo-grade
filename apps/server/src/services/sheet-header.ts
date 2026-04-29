@@ -27,9 +27,40 @@ export function buildCanonicalHeaderForJudgeCount(judgeCount: number): string[] 
 
 /**
  * Format a Date as `YYYY-MM-DD HH:mm:ss UTC` to match the timezone style
- * already used in uniqueWorksheetTitle / maintenance CSV filenames.
+ * already used in maintenance CSV filenames.
  */
 export function formatUpdatedAt(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} UTC`;
+}
+
+/**
+ * Compute the effective worksheet header given the existing header (as written
+ * in the user's sheet) and the canonical header for the current judge roster.
+ *
+ * Behaviour:
+ * - The existing header order is preserved (so user-driven column reordering
+ *   and any extra user columns survive).
+ * - Any canonical column that is missing from the existing header is appended
+ *   at the end, in the order it appears in `canonicalHeader`.
+ * - Empty / whitespace-only existing entries are normalized to "" and treated
+ *   as non-canonical placeholders.
+ *
+ * Pure function — no I/O — so it can be unit tested independently of the
+ * Google Sheets client.
+ */
+export function computeEffectiveHeader(
+  existing: readonly string[],
+  canonical: readonly string[]
+): { header: string[]; appended: string[] } {
+  const normalizedExisting = existing.map((value) => String(value ?? "").trim());
+  const present = new Set(normalizedExisting.filter((value) => value.length > 0));
+  const appended: string[] = [];
+  for (const column of canonical) {
+    if (!present.has(column)) {
+      appended.push(column);
+      present.add(column);
+    }
+  }
+  return { header: [...normalizedExisting, ...appended], appended };
 }

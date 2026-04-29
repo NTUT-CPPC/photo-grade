@@ -26,6 +26,7 @@ const EnvSchema = z
     OIDC_POST_LOGOUT_REDIRECT_URI: z.string().optional(),
     GOOGLE_SHEETS_ENABLED: z.coerce.boolean().default(false),
     GOOGLE_SHEET_ID: z.string().optional(),
+    GOOGLE_SHEET_WORKSHEET: z.string().default("Photo Grade Scores"),
     GOOGLE_SERVICE_ACCOUNT_JSON: z.string().optional(),
     GOOGLE_SERVICE_ACCOUNT_FILE: z.string().optional(),
     MAX_IMPORT_FILE_MB: z.coerce.number().default(50),

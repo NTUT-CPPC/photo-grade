@@ -28,6 +28,7 @@ import { getOrderingState, regenerateShuffle, setActiveMode, setDefaultMode } fr
 import { setPresentationState } from "./services/presentation-service.js";
 import { getRuleConfig, setRuleConfig } from "./services/rule-config-service.js";
 import { recomputeAllInitialPassed } from "./services/score-service.js";
+import { getSheetSyncConfig, setSheetSyncConfig } from "./services/sheet-config-service.js";
 import { listWorks, metadataForWork } from "./services/work-service.js";
 import { processSheetSync } from "./services/sheet-service.js";
 import { assertInsideDataDir, dataDirs, ensureDataDirs } from "./storage.js";
@@ -120,6 +121,29 @@ app.get("/api/judges", async (_req, res, next) => {
 app.get("/api/admin/judges", requireAuth(), async (_req, res, next) => {
   try {
     res.json({ judges: await listJudges() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/admin/sheet-sync/config", requireAuth(), async (_req, res, next) => {
+  try {
+    res.json({
+      enabled: env.GOOGLE_SHEETS_ENABLED,
+      ...(await getSheetSyncConfig())
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/admin/sheet-sync/config", requireAuth(), async (req, res, next) => {
+  try {
+    const spreadsheet = firstString(req.body?.spreadsheet);
+    if (!spreadsheet) throw new Error("spreadsheet is required.");
+    const worksheetTitle = firstString(req.body?.worksheetTitle);
+    const config = await setSheetSyncConfig({ spreadsheet, worksheetTitle });
+    res.json({ enabled: env.GOOGLE_SHEETS_ENABLED, ...config });
   } catch (error) {
     next(error);
   }

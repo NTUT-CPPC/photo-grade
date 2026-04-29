@@ -84,6 +84,15 @@ model RuleConfig {
   updatedAt                 DateTime @updatedAt
 }
 
+model SheetSyncConfig {
+  id             Int      @id @default(1)
+  spreadsheetId  String
+  spreadsheetUrl String?
+  worksheetTitle String   @default("Photo Grade Scores")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 model SheetSyncOutbox {
   id            String    @id @default(cuid())
   scoreId       String

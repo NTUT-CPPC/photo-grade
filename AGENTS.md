@@ -112,6 +112,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
   - `d0a7080 fix: support provider-specific oidc authorization params`（已由 `2277ce6` 移除錯誤 workaround）
   - `e95d567 docs: update agent progress for oidc params`（已由後續 AGENTS 更新修正）
   - `2277ce6 fix: adapt oidc sessions to ioredis`
+  - `478f16e chore: log server version and errors`
 - [x] Basic Auth 帳密簡化為單一 `AUTH_USERNAME`/`AUTH_PASSWORD`，移除 host/score/admin 三組。
 - [x] 任何成功登入皆可使用 `/host`、`/score`、`/admin`，不再做角色分流。
 - [x] 加入 OIDC Authorization Code (PKCE) 登入；以 `AUTH_MODE=basic|oidc` 切換。
@@ -119,6 +120,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - [x] 前端 TopNav 依 `/api/runtime-config` 回傳的 `authMode` 切換 Login / Logout 行為。
 - [x] README 新增「登入模式 (Auth)」段落，列出 Basic / OIDC 環境變數與常見 OP 設定提示。
 - [x] 修正 OIDC `/auth/login` 回 `{"error":"ERR syntax error"}`：根因是 `connect-redis@9` 預期 node-redis client options，但程式使用 `ioredis`；已新增相容 adapter，把 session `SET`/`DEL`/`MGET`/`SCAN` 轉成 ioredis 語法，並移除錯誤的 `OIDC_AUTHORIZATION_PARAMS` workaround。
+- [x] App 啟動 log 與 `/api/health` 增加 `PHOTO_GRADE_VERSION`，error middleware 會輸出 error name/code/stack；GitHub Actions build image 時會寫入 commit SHA，方便確認伺服器是否真的跑新版 image。
 - [x] HEIC 上傳於 import 時自動轉 JPEG（`heic-convert`），原 HEIC 檔案以 JPEG 取代寫入 originals。
 - [x] Admin import 改為單一檔案 picker + drag-and-drop；dry-run details 摺疊顯示。
 - [x] `tmp/` 加入 `.gitignore`，repo URL 更新為 `NTUT-CPPC/photo-grade`。
@@ -176,6 +178,7 @@ Photo Grade 是 Docker-first、可重用的攝影作品評分系統。它取代 
 - 初評 pass 門檻為 `Math.ceil(judgeCount/2)`，於 `score-service.recomputeWorkDerivedScores` 在每次 score 寫入時依當下 `prisma.judge.count()` 重算。已知限制：當管理者於評審清單變動（新增/刪除）後，先前已寫入的 `Work.initialPassed` 不會自動重算，要等到該作品下一次有 score 寫入才會更新。需要時可手動觸發 score upsert 或之後加 admin reflow API。
 - `OrderingState` 的 `shuffleOrder` 只在 admin `setDefaultMode("shuffle")` 或 `regenerateShuffle()` 才重洗；admin 切回 sequential 不會清掉，方便 host 即時切換回 shuffle 用同一份順序。新增/刪除 `Work` 後若想保留新作品也納入隨機，要 admin 觸發 regenerate。
 - OIDC `/auth/login` 若在 Photo Grade 網域直接回 JSON `{"error":"ERR syntax error"}`，通常代表 app 尚未 redirect 到 OP；優先查 session Redis 寫入與 `connect-redis` client 相容性，不要先改 OP redirect URL 或加 provider-specific authorization params。
+- 2026-04-29 使用者提供的 Synology app log 只有啟動紀錄，格式仍是 `photo-grade server listening on 8080`，沒有 `version=...`；代表該伺服器當下尚未跑到 `478f16e` 之後的診斷 image。更新 GHCR image 後，log 應顯示 `photo-grade server listening on 8080 version=<commit-sha>`。
 
 ## Architecture
 

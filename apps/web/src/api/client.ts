@@ -1,3 +1,4 @@
+import type { OrderingMode, OrderingStatePayload } from "@photo-grade/shared";
 import type {
   ActiveImportBatch,
   ImportDryRunResult,
@@ -176,6 +177,27 @@ export async function setMode(mode: Mode): Promise<void> {
     method: "POST",
     body: JSON.stringify({ mode }),
     allowEmpty: true
+  });
+}
+
+export async function getOrdering(): Promise<OrderingStatePayload> {
+  return request<OrderingStatePayload>("/api/ordering");
+}
+
+export async function setActiveOrdering(activeMode: OrderingMode): Promise<OrderingStatePayload> {
+  return request<OrderingStatePayload>("/api/sync/ordering", {
+    method: "POST",
+    body: JSON.stringify({ activeMode })
+  });
+}
+
+export async function setDefaultOrdering(input: {
+  defaultMode?: OrderingMode;
+  regenerate?: boolean;
+}): Promise<OrderingStatePayload> {
+  return request<OrderingStatePayload>("/api/admin/ordering", {
+    method: "PUT",
+    body: JSON.stringify(input)
   });
 }
 

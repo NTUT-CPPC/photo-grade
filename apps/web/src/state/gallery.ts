@@ -1,6 +1,15 @@
+import type { OrderingMode } from "@photo-grade/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getIdx, getItems, getMode, getSheetRecords, setIdx, setMode } from "../api/client";
-import { emitIdx, emitMode, onSyncState } from "../api/socket";
+import {
+  getIdx,
+  getItems,
+  getMode,
+  getOrdering,
+  getSheetRecords,
+  setIdx,
+  setMode
+} from "../api/client";
+import { emitIdx, emitMode, onOrderingChanged, onSyncState } from "../api/socket";
 import type { Mode, PhotoItem, SheetRecord } from "../types";
 
 const MODE_LABELS: Record<Mode, string> = {
@@ -23,6 +32,24 @@ export function sortItems(items: PhotoItem[]) {
     if (Number.isFinite(aa.num) && Number.isFinite(bb.num)) return aa.num - bb.num;
     return a.base.localeCompare(b.base);
   });
+}
+
+function orderItems(items: PhotoItem[], orderingMode: OrderingMode, shuffleOrder: string[]) {
+  if (orderingMode !== "shuffle" || shuffleOrder.length === 0) {
+    return sortItems(items);
+  }
+  const positions = new Map<string, number>();
+  shuffleOrder.forEach((code, index) => {
+    positions.set(code, index);
+  });
+  const known: PhotoItem[] = [];
+  const unknown: PhotoItem[] = [];
+  for (const item of items) {
+    if (positions.has(item.base)) known.push(item);
+    else unknown.push(item);
+  }
+  known.sort((a, b) => (positions.get(a.base)! - positions.get(b.base)!));
+  return [...known, ...sortItems(unknown)];
 }
 
 function truthy(value: unknown) {
@@ -79,10 +106,15 @@ export function useGallery(role: "host" | "score" | "view") {
   const [rows, setRows] = useState<SheetRecord[]>([]);
   const [idx, setLocalIdx] = useState(0);
   const [mode, setLocalMode] = useState<Mode>("initial");
+  const [orderingMode, setOrderingMode] = useState<OrderingMode>("sequential");
+  const [shuffleOrder, setShuffleOrder] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const sortedItems = useMemo(() => sortItems(items), [items]);
+  const sortedItems = useMemo(
+    () => orderItems(items, orderingMode, shuffleOrder),
+    [items, orderingMode, shuffleOrder]
+  );
   const visibleItems = useMemo(() => {
     const filtered = filterByMode(sortedItems, rows, mode);
     return filtered.length ? filtered : sortedItems;
@@ -96,18 +128,33 @@ export function useGallery(role: "host" | "score" | "view") {
     lastModeRef.current = mode;
   }, [mode]);
 
+  const refreshOrdering = useCallback(async () => {
+    try {
+      const state = await getOrdering();
+      setOrderingMode(state.activeMode);
+      setShuffleOrder(state.shuffleOrder);
+    } catch {
+      // ignore — keep current ordering
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [nextItems, nextRows, nextIdx, nextMode] = await Promise.all([
+      const [nextItems, nextRows, nextIdx, nextMode, nextOrdering] = await Promise.all([
         getItems(),
         getSheetRecords().catch(() => []),
         getIdx().catch(() => 0),
-        getMode().catch(() => "initial" as Mode)
+        getMode().catch(() => "initial" as Mode),
+        getOrdering().catch(() => null)
       ]);
-      const ordered = sortItems(nextItems);
-      setItems(ordered);
+      const activeOrdering: OrderingMode = nextOrdering?.activeMode ?? "sequential";
+      const nextShuffle = nextOrdering?.shuffleOrder ?? [];
+      const ordered = orderItems(nextItems, activeOrdering, nextShuffle);
+      setItems(nextItems);
+      setOrderingMode(activeOrdering);
+      setShuffleOrder(nextShuffle);
       setRows(nextRows);
       setLocalMode(nextMode);
       const remoteBase = ordered[nextIdx]?.base;
@@ -124,6 +171,13 @@ export function useGallery(role: "host" | "score" | "view") {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    return onOrderingChanged((state) => {
+      setOrderingMode(state.activeMode);
+      setShuffleOrder(state.shuffleOrder);
+    });
+  }, []);
 
   useEffect(() => {
     return onSyncState((state) => {
@@ -184,8 +238,10 @@ export function useGallery(role: "host" | "score" | "view") {
     items: visibleItems,
     loading,
     mode,
+    orderingMode,
     realIdx,
     refresh,
+    refreshOrdering,
     navigate,
     jumpTo,
     changeMode

@@ -1,3 +1,4 @@
+import type { OrderingStatePayload } from "@photo-grade/shared";
 import { io, type Socket } from "socket.io-client";
 import type { ImportProgress, Mode, ScoreNotification, SyncState } from "../types";
 
@@ -62,4 +63,12 @@ export function onImportProgress(callback: (progress: ImportProgress) => void) {
   const events = ["import:progress", "admin:import:progress"];
   events.forEach((event) => s.on(event, callback));
   return () => events.forEach((event) => s.off(event, callback));
+}
+
+export function onOrderingChanged(callback: (state: OrderingStatePayload) => void) {
+  const s = getSocket();
+  s.on("ordering:changed", callback);
+  return () => {
+    s.off("ordering:changed", callback);
+  };
 }

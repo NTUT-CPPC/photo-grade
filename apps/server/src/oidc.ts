@@ -3,10 +3,34 @@ import { env } from "./env.js";
 
 let configCache: Promise<oidc.Configuration> | null = null;
 
+const RESERVED_AUTHORIZATION_PARAMS = new Set([
+  "client_id",
+  "code_challenge",
+  "code_challenge_method",
+  "nonce",
+  "redirect_uri",
+  "response_type",
+  "scope",
+  "state"
+]);
+
 export function defaultRedirectUri(): string {
   if (env.OIDC_REDIRECT_URI) return env.OIDC_REDIRECT_URI;
   const base = (env.APP_BASE_URL || `http://localhost:${env.PORT}`).replace(/\/+$/, "");
   return `${base}/auth/callback`;
+}
+
+export function parseExtraAuthorizationParams(value: string | undefined): Record<string, string> {
+  const raw = value?.trim();
+  if (!raw) return {};
+  const params = new URLSearchParams(raw.startsWith("?") ? raw.slice(1) : raw);
+  const extra: Record<string, string> = {};
+  for (const [key, paramValue] of params.entries()) {
+    const normalizedKey = key.trim();
+    if (!normalizedKey || RESERVED_AUTHORIZATION_PARAMS.has(normalizedKey)) continue;
+    extra[normalizedKey] = paramValue;
+  }
+  return extra;
 }
 
 export async function oidcConfig(): Promise<oidc.Configuration> {
@@ -30,6 +54,7 @@ export async function buildAuthorizationUrl(params: {
 }): Promise<URL> {
   const config = await oidcConfig();
   const url = oidc.buildAuthorizationUrl(config, {
+    ...parseExtraAuthorizationParams(env.OIDC_AUTHORIZATION_PARAMS),
     redirect_uri: defaultRedirectUri(),
     scope: env.OIDC_SCOPES,
     code_challenge: params.codeChallenge,

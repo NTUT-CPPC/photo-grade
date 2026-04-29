@@ -46,6 +46,8 @@ x-app-env: &app-env
   # 留空時自動使用 ${APP_BASE_URL}/auth/callback；必須與 OP 端註冊的 callback URL 完全一致。
   OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
   OIDC_SCOPES: ${OIDC_SCOPES:-openid profile email}
+  # 選填；額外加到 authorization URL 的 query string，例如 Synology SSO: synossoJSSDK=false
+  OIDC_AUTHORIZATION_PARAMS: ${OIDC_AUTHORIZATION_PARAMS:-}
   # 選填；OP 支援 end_session_endpoint 時 logout 會帶。
   OIDC_POST_LOGOUT_REDIRECT_URI: ${OIDC_POST_LOGOUT_REDIRECT_URI:-}
 

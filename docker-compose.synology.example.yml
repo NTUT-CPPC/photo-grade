@@ -1,0 +1,162 @@
+# Photo Grade — Synology Container Manager Project 範本
+#
+# 用法：
+#   1. 把這份檔案內容整段貼到 Container Manager → 專案 → 建立 → 「來源」選「自行建立 docker-compose.yml」。
+#   2. 把所有 ★ 標記的值改成你自己的設定（密碼、網域、OIDC、Google Sheet 等）。
+#   3. 確認 `volumes:` 內的相對路徑（./data, ./postgres-data, ./redis-data）已經先在共用資料夾建好。
+#   4. 按「下一步」→ 套用 → 建置。
+#
+# 與根目錄的 docker-compose.yml 的差異：
+#   - 全部值「直接內嵌」，不依賴 .env 檔（Container Manager 預設不會自動讀 .env，
+#     而且把所有設定集中在這裡比較好維護）。
+#   - postgres / redis 改用 bind mount（./postgres-data, ./redis-data），
+#     這樣資料可以在 File Station 直接看到、備份；用 Synology 內建的「Hyper Backup」
+#     也比較好。
+#   - 沒有宣告頂層 `volumes:`（沒用到 named volume）。
+#   - 不走本地 build；直接拉 GHCR 上的官方 image，所以 NAS 上不需要安裝 git / build tools。
+
+x-app-env: &app-env
+  # --- Runtime ---
+  NODE_ENV: production
+  PORT: 8080
+
+  # ★ 對外網址：QR code、OIDC callback、各種絕對連結都會用這個。
+  # 反向代理走 HTTPS 時請填 https：// 加上你的網域。
+  APP_BASE_URL: https://grade.example.com
+  PUBLIC_ENTRY_URL: https://grade.example.com
+
+  # --- Storage ---
+  DATA_DIR: /data
+
+  # --- Database / Cache ---
+  # 預設指向同一個 compose 內的 postgres / redis service。除非外接 DB 否則不要改。
+  DATABASE_URL: postgresql://photo_grade:photo_grade@postgres:5432/photo_grade?schema=public
+  REDIS_URL: redis://redis:6379
+
+  # --- Auth ---
+  # basic：HTTP Basic Auth；現場用一組共用帳密最簡單。
+  # oidc ：使用外部 OpenID Connect 提供者（包含 Synology 自己的 SSO）。
+  # ★ 二擇一：
+  AUTH_MODE: basic
+
+  # ★ basic 模式必改：建議用 16+ 字元的隨機字串
+  AUTH_USERNAME: admin
+  AUTH_PASSWORD: change-me-please
+
+  # --- Session（AUTH_MODE=oidc 才需要 SESSION_SECRET） ---
+  # ★ OIDC 模式必填：建議用至少 32 字元隨機字串。
+  # 可以用 `openssl rand -hex 32` 或網頁產生器產生。
+  SESSION_SECRET: ""
+
+  # auto = 在 production 自動 secure；走 HTTPS 反向代理 + trust proxy 時用 auto 即可。
+  COOKIE_SECURE: auto
+
+  # --- OIDC（AUTH_MODE=oidc 才會用到） ---
+  # ★ Issuer URL 範例：
+  #   - Synology DSM 內建 SSO：https://YOUR-DSM-DDNS/webman/sso
+  #   - Keycloak：https://op.example.com/realms/<realm>
+  #   - Auth0：https://<tenant>.auth0.com/
+  #   - Google：https://accounts.google.com
+  OIDC_ISSUER_URL: ""
+  OIDC_CLIENT_ID: ""
+  OIDC_CLIENT_SECRET: ""
+
+  # 留空時自動使用 ${APP_BASE_URL}/auth/callback；
+  # 必須與 OP 端註冊的 callback URL 完全一致（含 https/http、port、結尾斜線）。
+  OIDC_REDIRECT_URI: ""
+  OIDC_SCOPES: openid profile email
+  OIDC_POST_LOGOUT_REDIRECT_URI: ""
+
+  # --- Google Sheet 同步（選用） ---
+  # ★ 設成 true 才會啟用同步 worker；admin 後台也只在這時顯示完整設定區。
+  GOOGLE_SHEETS_ENABLED: "false"
+
+  # ★ 試算表 ID（選用）：留空時可在 admin 後台貼網址設定，會優先生效。
+  GOOGLE_SHEET_ID: ""
+  GOOGLE_SHEET_WORKSHEET: Photo Grade Scores
+
+  # ★ Service Account 金鑰：以下 *二擇一* 設定。
+  #
+  # 推薦做法（單純）：把 google-service-account.json 用 File Station 上傳到
+  #   <共用資料夾>/photo-grade/data/secrets/google-service-account.json
+  # 然後讓底下這行 *維持預設值* 即可，下面那條 GOOGLE_SERVICE_ACCOUNT_JSON 留空。
+  GOOGLE_SERVICE_ACCOUNT_FILE: /data/secrets/google-service-account.json
+
+  # 替代做法：直接把整段 JSON 字串內嵌（不需要上傳檔案）。
+  # 注意 1：要把 "private_key" 內的所有換行 \n 都保留成「兩個字元 \n」（不是真的換行）。
+  # 注意 2：YAML 字串裡的雙引號要 escape（\"），整段用單引號包起來最簡單；
+  #         或者像下面用 |- block scalar，YAML 會自動把它當一段純文字。
+  # GOOGLE_SERVICE_ACCOUNT_JSON: |-
+  #   {"type":"service_account","project_id":"...","private_key_id":"...",
+  #    "private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+  #    "client_email":"<service-account-name>@<project>.iam.gserviceaccount.com",
+  #    ...}
+  GOOGLE_SERVICE_ACCOUNT_JSON: ""
+
+  # --- Limits / CORS ---
+  MAX_IMPORT_FILE_MB: "50"
+  MAX_MEDIA_FILE_MB: "200"
+  # 單批匯入的並行下載/轉檔數。NAS 通常 CPU 比 PC 弱，1-3 之間試。
+  IMPORT_ITEM_CONCURRENCY: "3"
+  # 留空 = same-origin；只有前端跨網域時才需要填。
+  SOCKET_CORS_ORIGIN: ""
+
+services:
+  app:
+    image: ghcr.io/ntut-cppc/photo-grade:latest
+    # 啟動時 push Prisma schema，再起 server。
+    command: sh -c "npm run db:push && npm run start"
+    environment:
+      <<: *app-env
+    ports:
+      # ★ host:container：左邊是 NAS 對外 port，右邊是容器內 port（不要動）。
+      # 反向代理會打到 NAS 的這個 port，所以不要把它直接公開到公網。
+      - "8080:8080"
+    volumes:
+      # bind mount，方便用 File Station 看檔案 / 備份。
+      - ./data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/ntut-cppc/photo-grade:latest
+    command: npm run worker
+    environment:
+      <<: *app-env
+    volumes:
+      - ./data:/data
+    depends_on:
+      app:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: photo_grade
+      POSTGRES_USER: photo_grade
+      # ★ 建議覆寫；同時也要回去改 DATABASE_URL 裡那段密碼。
+      POSTGRES_PASSWORD: photo_grade
+    volumes:
+      # bind mount：DB 資料會在 File Station 看得到，備份時直接複製即可。
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U photo_grade -d photo_grade"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    volumes:
+      - ./redis-data:/data
+    restart: unless-stopped

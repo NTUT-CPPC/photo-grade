@@ -104,17 +104,97 @@ export async function processSheetSync(scoreIds?: string[]): Promise<void> {
       }
     }
 
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: target.spreadsheetId,
-      range: `${quoteSheetTitle(workspace.worksheetTitle)}!A1:${columnName(headerWidth - 1)}${Math.max(values.length, 1)}`,
-      valueInputOption: "RAW",
-      requestBody: { values }
-    });
+    const range = `${quoteSheetTitle(workspace.worksheetTitle)}!A1:${columnName(headerWidth - 1)}${Math.max(values.length, 1)}`;
+    const verifyResult = await writeAndVerify(
+      sheets,
+      target.spreadsheetId,
+      range,
+      values,
+      `${workspace.worksheetTitle} (${outboxItems.length} outbox items)`
+    );
+    if (!verifyResult.ok) {
+      throw new Error(verifyResult.error ?? "Sheet write-then-verify failed");
+    }
 
     await markOutboxSynced(outboxItems.map((item) => item.id), outboxItems.map((item) => item.scoreId));
   } catch (err) {
     await releaseOutboxItems(outboxItems.map((item) => item.id), String(err), outboxItems.map((item) => item.scoreId));
   }
+}
+
+/**
+ * Write `values` to `range`, then read the same `range` back and compare
+ * cell-for-cell to detect silent write loss (transient Sheets API hiccups
+ * where the API returns 200 but the cell value is not actually persisted).
+ *
+ * Retries up to `maxAttempts` total (write + read = one attempt). Returns
+ * `{ ok: true }` as soon as a read-back matches; `{ ok: false, error }` if
+ * the last attempt still mismatches. The caller should throw on `ok: false`
+ * so the existing outbox release path increments attempts/backoff.
+ *
+ * Read range is identical to the write range (not a full-sheet read) to keep
+ * verify cheap.
+ */
+async function writeAndVerify(
+  sheets: sheets_v4.Sheets,
+  spreadsheetId: string,
+  range: string,
+  values: string[][],
+  label: string,
+  maxAttempts = 3
+): Promise<{ ok: true; attempts: number } | { ok: false; attempts: number; error: string }> {
+  let lastError: string | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range,
+      valueInputOption: "RAW",
+      requestBody: { values }
+    });
+    const verifyResp = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+    const actual = (verifyResp.data.values ?? []).map((row) =>
+      row.map((cell) => String(cell ?? ""))
+    );
+    const expected = values.map((row) => row.map((cell) => String(cell ?? "")));
+    const mismatches = diffCells(expected, actual);
+    if (mismatches.length === 0) {
+      if (attempt > 1) {
+        console.log(`[sheet-sync] ${label} verified after ${attempt} attempts`);
+      }
+      return { ok: true, attempts: attempt };
+    }
+    lastError = `verify mismatch (attempt ${attempt}/${maxAttempts}): ${mismatches.slice(0, 3).join("; ")}${mismatches.length > 3 ? "; …" : ""}`;
+    console.warn(`[sheet-sync] ${label} ${lastError}`);
+  }
+  return { ok: false, attempts: maxAttempts, error: lastError ?? "verify failed" };
+}
+
+/**
+ * Compare two 2D string grids cell-for-cell, returning short human-readable
+ * mismatch descriptions (1-indexed row/column for log readability), e.g.
+ * `R3C5 expected '4' got ''`.
+ *
+ * `expected.length` is the row count of record. Trailing rows missing from
+ * `actual` are treated as all-empty (Google Sheets trims trailing empty rows
+ * on read, so a fully-empty appended row would otherwise look like a bug).
+ * Cells beyond the expected row width on the actual side are ignored.
+ *
+ * Pure function — no I/O — exported so unit tests can pin the format.
+ */
+export function diffCells(expected: string[][], actual: string[][]): string[] {
+  const mismatches: string[] = [];
+  for (let r = 0; r < expected.length; r += 1) {
+    const expectedRow = expected[r] ?? [];
+    const actualRow = actual[r] ?? [];
+    for (let c = 0; c < expectedRow.length; c += 1) {
+      const exp = String(expectedRow[c] ?? "");
+      const act = String(actualRow[c] ?? "");
+      if (exp !== act) {
+        mismatches.push(`R${r + 1}C${c + 1} expected '${exp}' got '${act}'`);
+      }
+    }
+  }
+  return mismatches;
 }
 
 export async function verifySheetSyncWorksheet(input: {

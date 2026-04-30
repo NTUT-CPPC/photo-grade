@@ -1,5 +1,6 @@
 import type { JudgingMode, ModePreviewResult } from "@photo-grade/shared";
 import { prisma } from "../prisma.js";
+import { selectFinalists } from "./final-selection.js";
 import { listJudges } from "./judge-service.js";
 import { getPresentationState } from "./presentation-service.js";
 import { getActiveInitialThreshold, getDefaultInitialThreshold } from "./score-service.js";
@@ -74,20 +75,18 @@ export async function previewMode(
   if (!Number.isInteger(topN) || topN < 1) topN = defaultTopN;
 
   const works = await prisma.work.findMany({
-    where: { initialPassed: true },
-    select: { id: true, secondaryTotal: true }
-  });
-  const ranked = [...works].sort((a, b) => b.secondaryTotal - a.secondaryTotal);
-  const accepted: typeof ranked = [];
-  let lastScore: number | null = null;
-  for (const work of ranked) {
-    if (accepted.length < topN || work.secondaryTotal === lastScore) {
-      accepted.push(work);
-      lastScore = work.secondaryTotal;
-    } else {
-      break;
+    select: {
+      id: true,
+      code: true,
+      initialPassed: true,
+      secondaryTotal: true,
+      scores: { where: { round: "secondary" }, select: { id: true } }
     }
-  }
+  });
+  const accepted = selectFinalists(
+    works.map((work) => ({ ...work, secondaryScoreCount: work.scores.length })),
+    topN
+  );
   const count = accepted.length;
   const overflow = count > topN ? count - topN : 0;
   return {

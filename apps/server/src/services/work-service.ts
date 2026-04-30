@@ -3,6 +3,7 @@ import path from "node:path";
 import type { JudgingMode, WorkSummary } from "@photo-grade/shared";
 import { prisma } from "../prisma.js";
 import { dataDirs, publicAssetUrl } from "../storage.js";
+import { compareCodes, selectFinalists } from "./final-selection.js";
 import { getOrderingState } from "./ordering-service.js";
 import { getPresentationState } from "./presentation-service.js";
 import { getRuleConfig } from "./rule-config-service.js";
@@ -22,7 +23,13 @@ export async function listWorks(
   mode: JudgingMode = "initial",
   options: ListWorksOptions = {}
 ): Promise<WorkSummary[]> {
-  const works = await prisma.work.findMany({ include: { assets: true }, orderBy: [{ code: "asc" }] });
+  const works = await prisma.work.findMany({
+    include: {
+      assets: true,
+      scores: { where: { round: "secondary" }, select: { id: true } }
+    },
+    orderBy: [{ code: "asc" }]
+  });
   const sorted = works.sort((a, b) => compareCodes(a.code, b.code));
   let filtered = sorted;
   if (mode === "secondary") filtered = sorted.filter((w) => w.initialPassed);
@@ -33,19 +40,10 @@ export async function listWorks(
       topN = presentation.finalCutoff ?? (await getEffectiveDefaultFinalTopN());
     }
     if (!Number.isInteger(topN) || topN < 1) topN = await getEffectiveDefaultFinalTopN();
-    const ranked = sorted
-      .filter((w) => w.initialPassed)
-      .sort((a, b) => b.secondaryTotal - a.secondaryTotal);
-    const accepted: typeof ranked = [];
-    let lastScore: number | null = null;
-    for (const work of ranked) {
-      if (accepted.length < topN || work.secondaryTotal === lastScore) {
-        accepted.push(work);
-        lastScore = work.secondaryTotal;
-      } else {
-        break;
-      }
-    }
+    const accepted = selectFinalists(
+      sorted.map((work) => ({ ...work, secondaryScoreCount: work.scores.length })),
+      topN
+    );
     const acceptedIds = new Set(accepted.map((w) => w.id));
     filtered = sorted.filter((w) => acceptedIds.has(w.id));
   }
@@ -119,11 +117,4 @@ export async function metadataForWork(workId: string): Promise<unknown> {
   if (!asset.path.startsWith(dataDirs.root)) throw new Error("Metadata path is outside DATA_DIR.");
   const content = await fs.readFile(asset.path, "utf8");
   return JSON.parse(content);
-}
-
-function compareCodes(a: string, b: string): number {
-  const [na, sa] = a.split("-");
-  const [nb, sb] = b.split("-");
-  if (sa !== sb) return sa < sb ? -1 : 1;
-  return Number(na) - Number(nb);
 }

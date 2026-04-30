@@ -232,7 +232,7 @@ app.get("/api/admin/export/scores.csv", requireAuth(), async (_req, res, next) =
   }
 });
 
-app.post("/api/admin/maintenance/clear-scores", requireAuth(), async (_req, res, next) => {
+app.post(["/api/admin/maintenance/clear-scores", "/api/admin/clear/scores"], requireAuth(), async (_req, res, next) => {
   try {
     const artifact = await exportScoresCsv("clear-scores");
     await clearScoreData();
@@ -242,7 +242,7 @@ app.post("/api/admin/maintenance/clear-scores", requireAuth(), async (_req, res,
   }
 });
 
-app.post("/api/admin/maintenance/clear-media", requireAuth(), async (_req, res, next) => {
+app.post(["/api/admin/maintenance/clear-media", "/api/admin/clear/media"], requireAuth(), async (_req, res, next) => {
   try {
     const artifact = await exportScoresCsv("clear-media");
     await clearMediaData();

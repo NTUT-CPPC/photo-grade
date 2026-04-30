@@ -324,7 +324,7 @@ export async function clearScoresData(
   payload: AdminClearRequest
 ): Promise<AdminClearResponse | void> {
   return firstOk<AdminClearResponse | void>(
-    ["/api/admin/clear/scores", "/api/admin/maintenance/clear-scores"],
+    ["/api/admin/maintenance/clear-scores", "/api/admin/clear/scores"],
     {
       method: "POST",
       body: JSON.stringify(payload),
@@ -335,7 +335,7 @@ export async function clearScoresData(
 
 export async function clearMediaData(payload: AdminClearRequest): Promise<AdminClearResponse | void> {
   return firstOk<AdminClearResponse | void>(
-    ["/api/admin/clear/media", "/api/admin/maintenance/clear-media"],
+    ["/api/admin/maintenance/clear-media", "/api/admin/clear/media"],
     {
       method: "POST",
       body: JSON.stringify(payload),
